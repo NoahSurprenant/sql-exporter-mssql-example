@@ -55,13 +55,18 @@ jobs:
         run: docker compose logs
 
   windows:
-    name: Windows, SQL Server ${{ matrix.version }}
+    name: Windows, SQL Server ${{ matrix.version }}, exporter on ${{ matrix.exporter == 'wsl2' && 'Linux (WSL 2)' || 'Windows' }}
     runs-on: windows-2022
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         version: ["2017", "2019", "2022", "2025"]
+        # windows: the Windows build of sql_exporter on the same machine, over localhost.
+        # wsl2: the Linux build inside WSL 2, a real Linux kernel in its own VM, reaching SQL Server
+        # over the virtual network and through the Windows firewall, as a Linux host scraping a
+        # Windows database server would.
+        exporter: [windows, wsl2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -86,6 +91,7 @@ jobs:
           $global:LASTEXITCODE = 0
 
       - name: Download sql_exporter for Windows
+        if: matrix.exporter == 'windows'
         shell: pwsh
         run: |
           $v = $env:SQL_EXPORTER_VERSION
@@ -99,6 +105,7 @@ jobs:
           Expand-Archive "$env:RUNNER_TEMP/$zip" -DestinationPath "$env:RUNNER_TEMP/sql_exporter"
 
       - name: Run sql_exporter and check every collector query
+        if: matrix.exporter == 'windows'
         shell: pwsh
         run: |
           $exe = (Get-ChildItem "$env:RUNNER_TEMP/sql_exporter" -Recurse -Filter sql_exporter.exe | Select-Object -First 1).FullName
@@ -113,3 +120,46 @@ jobs:
             Stop-Process -Id $exporter.Id -ErrorAction SilentlyContinue
             Get-Content "$env:RUNNER_TEMP/sql_exporter.log" -ErrorAction SilentlyContinue
           }
+
+      - name: Install WSL 2 with Ubuntu
+        if: matrix.exporter == 'wsl2'
+        uses: Vampire/setup-wsl@4c48163d9f981914dd8caa0fc335fe19cca5bff4 # v7.2.0
+        with:
+          distribution: Ubuntu-24.04
+          wsl-version: 2
+          additional-packages: curl ca-certificates python3 iproute2
+
+      # WSL 2 is a separate network: its connections arrive on the host's WSL virtual adapter, not
+      # loopback, so the firewall has to let them in.
+      - name: Allow SQL Server through the Windows firewall
+        if: matrix.exporter == 'wsl2'
+        shell: pwsh
+        run: New-NetFirewallRule -DisplayName "SQL Server (WSL 2)" -Direction Inbound -Protocol TCP -LocalPort 1433 -Action Allow | Out-Null
+
+      # One step, so the exporter and the check share a WSL session: WSL can stop the VM once
+      # nothing is attached to it. Workflow env is not passed into WSL, hence the expressions.
+      - name: Run Linux sql_exporter in WSL 2 and check every collector query
+        if: matrix.exporter == 'wsl2'
+        shell: wsl-bash {0}
+        run: |
+          uname -sr
+          cd "$(wslpath '${{ github.workspace }}')"
+
+          v=${{ env.SQL_EXPORTER_VERSION }}
+          base=https://github.com/burningalchemist/sql_exporter/releases/download/$v
+          tarball=sql_exporter-$v.linux-amd64.tar.gz
+          mkdir -p ~/sql_exporter && cd ~/sql_exporter
+          curl -fsSLO "$base/$tarball" -O "$base/sha256sums.txt"
+          grep " $tarball\$" sha256sums.txt | sha256sum -c -
+          tar -xzf "$tarball"
+          exe=$(find ~/sql_exporter -type f -name sql_exporter | head -1)
+          cd - > /dev/null
+
+          # The Windows host, as WSL 2 sees it: its default gateway.
+          host=$(ip route show default | awk '{print $3; exit}')
+          echo "SQL Server at $host:1433"
+          dsn="sqlserver://sql_exporter:${{ env.EXPORTER_PASSWORD }}@$host:1433?encrypt=true&trustservercertificate=true"
+          "$exe" --config.file=sql_exporter.yml --config.data-source-name="$dsn" \
+            2> ~/sql_exporter/exporter.log &
+          trap 'kill $! 2> /dev/null || true; cat ~/sql_exporter/exporter.log' EXIT
+          python3 tests/check_metrics.py
