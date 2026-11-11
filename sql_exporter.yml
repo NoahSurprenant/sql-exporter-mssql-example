@@ -1,0 +1,21 @@
+# sql_exporter configuration. The connection string is not here: it is passed with
+# --config.data-source-name (see compose.yaml and the Windows job in .github/workflows/ci.yml), so
+# the same file serves both and holds no password.
+global:
+  scrape_timeout: 10s
+  scrape_timeout_offset: 500ms
+  min_interval: 0s
+  max_connections: 3
+  max_idle_connections: 3
+  max_connection_lifetime: 5m
+
+target:
+  # A name turns on the exporter's own `up` and `scrape_duration_seconds` for this target.
+  name: mssql
+  # Overridden at startup by --config.data-source-name; the exporter requires a value here.
+  data_source_name: 'sqlserver://placeholder:placeholder@localhost:1433'
+  collectors: [mssql_standard, mssql_query_stats]
+
+# Relative to this file's directory.
+collector_files:
+  - 'collectors/*.collector.yml'

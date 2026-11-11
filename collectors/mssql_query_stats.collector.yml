@@ -1,0 +1,142 @@
+# Per-statement statistics from the plan cache (sys.dm_exec_query_stats): how often each statement
+# runs, how long it takes, its CPU and its reads, for every client of the server. Plus the server's
+# wait statistics (sys.dm_os_wait_stats).
+#
+# Needs only VIEW SERVER STATE, no access to the databases themselves. The counters are cumulative
+# since the statement's plan was cached: a restart, a recompile or the plan being evicted resets
+# them, which rate() treats as a counter reset.
+#
+# Cardinality is bounded: the top 20 statements per database by total elapsed time, grouped by
+# query_hash (one statement shape, whatever its parameter values or plans). Labels: database,
+# query_hash and query, the statement's first 120 characters with whitespace collapsed. A statement
+# with literals in it (ad hoc SQL rather than parameterized queries) shows them there.
+collector_name: mssql_query_stats
+
+# The plan cache walk costs more than the standard collector's queries; once a minute is plenty.
+min_interval: 60s
+
+metrics:
+  - metric_name: mssql_query_executions_total
+    type: counter
+    help: 'Executions of the statement since its plan was cached (top 20 per database by elapsed time).'
+    key_labels: [database, query_hash, query]
+    values: [executions]
+    query_ref: mssql_query_stats
+  - metric_name: mssql_query_elapsed_seconds_total
+    type: counter
+    help: 'Total elapsed time of the statement, in seconds.'
+    key_labels: [database, query_hash, query]
+    values: [elapsed_seconds]
+    query_ref: mssql_query_stats
+  - metric_name: mssql_query_cpu_seconds_total
+    type: counter
+    help: 'Total CPU (worker) time of the statement, in seconds; above elapsed time when it runs in parallel.'
+    key_labels: [database, query_hash, query]
+    values: [cpu_seconds]
+    query_ref: mssql_query_stats
+  - metric_name: mssql_query_logical_reads_total
+    type: counter
+    help: 'Total 8 KB pages the statement read, from memory or disk.'
+    key_labels: [database, query_hash, query]
+    values: [logical_reads]
+    query_ref: mssql_query_stats
+  - metric_name: mssql_query_physical_reads_total
+    type: counter
+    help: 'Total 8 KB pages the statement had to read from disk.'
+    key_labels: [database, query_hash, query]
+    values: [physical_reads]
+    query_ref: mssql_query_stats
+  - metric_name: mssql_query_rows_total
+    type: counter
+    help: 'Total rows the statement returned.'
+    key_labels: [database, query_hash, query]
+    values: [rows_returned]
+    query_ref: mssql_query_stats
+  - metric_name: mssql_query_max_elapsed_seconds
+    type: gauge
+    help: 'Longest single execution of the statement since its plan was cached, in seconds.'
+    key_labels: [database, query_hash, query]
+    values: [max_elapsed_seconds]
+    query_ref: mssql_query_stats
+  - metric_name: mssql_wait_seconds_total
+    type: counter
+    help: 'Time spent waiting, by wait type, since SQL Server started (top 25, idle and background waits left out).'
+    key_labels: [wait_type]
+    values: [wait_seconds]
+    query_ref: mssql_wait_stats
+  - metric_name: mssql_waiting_tasks_total
+    type: counter
+    help: 'Waits, by wait type, since SQL Server started (top 25, idle and background waits left out).'
+    key_labels: [wait_type]
+    values: [waiting_tasks]
+    query_ref: mssql_wait_stats
+
+queries:
+  - query_name: mssql_query_stats
+    query: |
+      WITH stats AS (
+        SELECT
+          COALESCE(DB_NAME(CONVERT(int, pa.value)), 'unknown') AS [database],
+          qs.query_hash,
+          SUM(qs.execution_count) AS executions,
+          SUM(qs.total_elapsed_time) / 1e6 AS elapsed_seconds,
+          SUM(qs.total_worker_time) / 1e6 AS cpu_seconds,
+          SUM(qs.total_logical_reads) AS logical_reads,
+          SUM(qs.total_physical_reads) AS physical_reads,
+          SUM(qs.total_rows) AS rows_returned,
+          MAX(qs.max_elapsed_time) / 1e6 AS max_elapsed_seconds,
+          MIN(qs.sql_handle) AS sql_handle,
+          MIN(qs.statement_start_offset) AS statement_start_offset,
+          MIN(qs.statement_end_offset) AS statement_end_offset
+        FROM sys.dm_exec_query_stats AS qs
+        CROSS APPLY sys.dm_exec_plan_attributes(qs.plan_handle) AS pa
+        -- The database the statement ran in; above 4 leaves out master, tempdb, model and msdb.
+        WHERE pa.attribute = N'dbid' AND CONVERT(int, pa.value) > 4
+        GROUP BY CONVERT(int, pa.value), qs.query_hash
+      ), ranked AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY [database] ORDER BY elapsed_seconds DESC) AS rn
+        FROM stats
+      )
+      SELECT
+        r.[database],
+        CONVERT(varchar(18), r.query_hash, 1) AS query_hash,
+        LEFT(LTRIM(REPLACE(REPLACE(REPLACE(REPLACE(
+          SUBSTRING(st.text, r.statement_start_offset / 2 + 1,
+            (CASE r.statement_end_offset WHEN -1 THEN DATALENGTH(st.text) ELSE r.statement_end_offset END
+              - r.statement_start_offset) / 2 + 1),
+          CHAR(13), ' '), CHAR(10), ' '), CHAR(9), ' '), '  ', ' ')), 120) AS query,
+        r.executions, r.elapsed_seconds, r.cpu_seconds, r.logical_reads, r.physical_reads,
+        r.rows_returned, r.max_elapsed_seconds
+      FROM ranked AS r
+      CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) AS st
+      WHERE r.rn <= 20
+  - query_name: mssql_wait_stats
+    # The idle and background wait types are the usual list (sleeps, queues, Query Store, HADR,
+    # broker, XE, checkpoint and lazy writer): they grow forever without anyone waiting on them.
+    query: |
+      SELECT TOP 25 wait_type, wait_time_ms / 1e3 AS wait_seconds, waiting_tasks_count AS waiting_tasks
+      FROM sys.dm_os_wait_stats
+      WHERE wait_time_ms > 0
+        AND wait_type NOT LIKE N'SLEEP[_]%'
+        AND wait_type NOT LIKE N'HADR[_]%'
+        AND wait_type NOT LIKE N'BROKER[_]%'
+        AND wait_type NOT LIKE N'XE[_]%'
+        AND wait_type NOT LIKE N'QDS[_]%'
+        AND wait_type NOT LIKE N'PREEMPTIVE[_]XE[_]%'
+        AND wait_type NOT LIKE N'PWAIT[_]%'
+        AND wait_type NOT IN (
+          N'CHECKPOINT_QUEUE', N'CLR_AUTO_EVENT', N'CLR_MANUAL_EVENT', N'CLR_SEMAPHORE',
+          N'DIRTY_PAGE_POLL', N'DISPATCHER_QUEUE_SEMAPHORE', N'FT_IFTS_SCHEDULER_IDLE_WAIT',
+          N'FT_IFTSHC_MUTEX', N'KSOURCE_WAKEUP', N'LAZYWRITER_SLEEP', N'LOGMGR_QUEUE',
+          N'MEMORY_ALLOCATION_EXT', N'ONDEMAND_TASK_QUEUE', N'PARALLEL_REDO_DRAIN_WORKER',
+          N'PARALLEL_REDO_LOG_CACHE', N'PARALLEL_REDO_TRAN_LIST', N'PARALLEL_REDO_WORKER_SYNC',
+          N'PARALLEL_REDO_WORKER_WAIT_WORK', N'REQUEST_FOR_DEADLOCK_SEARCH', N'RESOURCE_QUEUE',
+          N'SERVER_IDLE_CHECK', N'SOS_WORK_DISPATCHER', N'SP_SERVER_DIAGNOSTICS_SLEEP',
+          N'SQLTRACE_BUFFER_FLUSH', N'SQLTRACE_INCREMENTAL_FLUSH_SLEEP', N'VDI_CLIENT_OTHER',
+          N'WAIT_FOR_RESULTS', N'WAITFOR', N'WAITFOR_TASKSHUTDOWN', N'WAIT_XTP_RECOVERY',
+          N'WAIT_XTP_HOST_WAIT', N'WAIT_XTP_OFFLINE_CKPT_NEW_LOG', N'WAIT_XTP_CKPT_CLOSE',
+          N'XTP_PREEMPTIVE_TASK', N'CXCONSUMER', N'SOS_SCHEDULER_YIELD_IDLE', N'BACKUPIO',
+          N'BACKUPBUFFER', N'BACKUPTHREAD', N'SNI_HTTP_ACCEPT', N'STARTUP_DEPENDENCY_MANAGER',
+          N'PVS_PREALLOCATE', N'UCS_SESSION_REGISTRATION', N'POPULATE_LOCK_ORDINALS', N'CHKPT',
+          N'AZURE_IMDS_VERSIONS')
+      ORDER BY wait_time_ms DESC

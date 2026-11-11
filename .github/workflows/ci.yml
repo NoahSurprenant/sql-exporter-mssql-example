@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # Weekly, so a new SQL Server cumulative update that changes a DMV shows up without a commit.
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Throwaway passwords for the runners' own SQL Server instances.
+  MSSQL_SA_PASSWORD: Example.Sa.Passw0rd
+  EXPORTER_PASSWORD: Example.Exporter.Passw0rd
+  SQL_EXPORTER_VERSION: 0.24.13
+
+jobs:
+  linux:
+    name: Linux container, SQL Server ${{ matrix.version }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["2019", "2022", "2025"]
+    env:
+      MSSQL_VERSION: ${{ matrix.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Start SQL Server, setup and sql_exporter
+        run: docker compose up -d
+
+      - name: Check every collector query
+        run: python3 tests/check_metrics.py
+
+      - name: Server version
+        if: always()
+        run: |
+          docker compose exec -T mssql bash -c \
+            's=/opt/mssql-tools18/bin/sqlcmd; [ -x $s ] || s=/opt/mssql-tools/bin/sqlcmd;
+             $s -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -h -1 -Q "SET NOCOUNT ON; SELECT @@VERSION"' \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Logs
+        if: failure()
+        run: docker compose logs
+
+  windows:
+    name: Windows, SQL Server ${{ matrix.version }}
+    runs-on: windows-2022
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["2019", "2022", "2025"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # A real SQL Server installation on Windows (Developer edition, default instance on
+      # localhost:1433, mixed-mode authentication), not a container.
+      - name: Install SQL Server ${{ matrix.version }}
+        uses: potatoqualitee/mssqlsuite@bc850f242e5fe551e36cea6fa4bed608c58fa489 # v2
+        with:
+          install: sqlengine
+          version: ${{ matrix.version }}
+          sa-password: ${{ env.MSSQL_SA_PASSWORD }}
+
+      - name: Create the exporter login, example database and workload
+        shell: pwsh
+        run: |
+          sqlcmd -S localhost -U sa -P $env:MSSQL_SA_PASSWORD -C -b -i sql/setup.sql -v "EXPORTER_PASSWORD=$env:EXPORTER_PASSWORD"
+          if ($LASTEXITCODE -ne 0) { throw "setup.sql failed" }
+          # Not -b: the workload ends with a deliberate error.
+          sqlcmd -S localhost -U sa -P $env:MSSQL_SA_PASSWORD -C -i sql/workload.sql | Out-Null
+          sqlcmd -S localhost -U sa -P $env:MSSQL_SA_PASSWORD -C -h -1 -Q "SET NOCOUNT ON; SELECT @@VERSION" |
+            Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
+          $global:LASTEXITCODE = 0
+
+      - name: Download sql_exporter for Windows
+        shell: pwsh
+        run: |
+          $v = $env:SQL_EXPORTER_VERSION
+          $base = "https://github.com/burningalchemist/sql_exporter/releases/download/$v"
+          $zip = "sql_exporter-$v.windows-amd64.zip"
+          Invoke-WebRequest "$base/$zip" -OutFile "$env:RUNNER_TEMP/$zip"
+          Invoke-WebRequest "$base/sha256sums.txt" -OutFile "$env:RUNNER_TEMP/sha256sums.txt"
+          $expected = ((Get-Content "$env:RUNNER_TEMP/sha256sums.txt" | Where-Object { $_ -match [regex]::Escape($zip) }) -split '\s+')[0]
+          $actual = (Get-FileHash "$env:RUNNER_TEMP/$zip" -Algorithm SHA256).Hash
+          if (-not $expected -or $actual -ne $expected.ToUpper()) { throw "checksum mismatch: $actual vs $expected" }
+          Expand-Archive "$env:RUNNER_TEMP/$zip" -DestinationPath "$env:RUNNER_TEMP/sql_exporter"
+
+      - name: Run sql_exporter and check every collector query
+        shell: pwsh
+        run: |
+          $exe = (Get-ChildItem "$env:RUNNER_TEMP/sql_exporter" -Recurse -Filter sql_exporter.exe | Select-Object -First 1).FullName
+          $dsn = "sqlserver://sql_exporter:$($env:EXPORTER_PASSWORD)@localhost:1433?encrypt=true&trustservercertificate=true"
+          $exporter = Start-Process $exe -PassThru -NoNewWindow `
+            -ArgumentList "--config.file=sql_exporter.yml", "--config.data-source-name=$dsn" `
+            -RedirectStandardError "$env:RUNNER_TEMP/sql_exporter.log"
+          try {
+            python tests/check_metrics.py
+            if ($LASTEXITCODE -ne 0) { throw "metric check failed" }
+          } finally {
+            Stop-Process -Id $exporter.Id -ErrorAction SilentlyContinue
+            Get-Content "$env:RUNNER_TEMP/sql_exporter.log" -ErrorAction SilentlyContinue
+          }

@@ -1,0 +1,57 @@
+# SQL Server on Linux, a one-shot setup container, and sql_exporter on :9399.
+#
+#   docker compose up -d
+#   curl -s localhost:9399/metrics | grep ^mssql_
+#
+# MSSQL_VERSION picks the SQL Server image: 2019, 2022 (default) or 2025.
+# The passwords are examples for a throwaway local container; change them for anything else.
+x-passwords: &passwords
+  MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Example.Sa.Passw0rd}
+  EXPORTER_PASSWORD: ${EXPORTER_PASSWORD:-Example.Exporter.Passw0rd}
+
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:${MSSQL_VERSION:-2022}-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Example.Sa.Passw0rd}
+    ports:
+      - "1433:1433"
+    mem_limit: 2g
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          s=/opt/mssql-tools18/bin/sqlcmd; [ -x $$s ] || s=/opt/mssql-tools/bin/sqlcmd;
+          $$s -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" -b -o /dev/null
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  setup:
+    image: mcr.microsoft.com/mssql/server:${MSSQL_VERSION:-2022}-latest
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment: *passwords
+    volumes:
+      - ./sql:/sql:ro
+    entrypoint: ["/bin/bash", "/sql/setup.sh"]
+    restart: "no"
+
+  sql-exporter:
+    image: burningalchemist/sql_exporter:0.24.13@sha256:befda03e0eae3f0c9b9dd0e5e5b968152f50e44dbdc04c1b68370c6fcbda2b7d
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    command:
+      - --config.file=/etc/sql_exporter/sql_exporter.yml
+      # Logs in as the least-privilege login setup.sql creates, not sa.
+      - --config.data-source-name=sqlserver://sql_exporter:${EXPORTER_PASSWORD:-Example.Exporter.Passw0rd}@mssql:1433?encrypt=true&trustservercertificate=true
+    volumes:
+      - ./sql_exporter.yml:/etc/sql_exporter/sql_exporter.yml:ro
+      - ./collectors:/etc/sql_exporter/collectors:ro
+    ports:
+      - "9399:9399"
