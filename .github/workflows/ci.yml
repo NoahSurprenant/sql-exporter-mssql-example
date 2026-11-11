@@ -64,6 +64,22 @@ jobs:
       - name: Check the OpenTelemetry events
         run: sudo -E python3 tests/check_events.py --events out/events.jsonl --workload "docker compose run --rm -T setup workload"
 
+      # Every dashboard panel through Grafana's query API: Prometheus scraping sql_exporter, Loki
+      # holding the collector's events.
+      - name: Check Grafana
+        run: python3 tests/check_grafana.py
+
+      - name: Screenshot the dashboard
+        run: |
+          docker run --rm --network host -v "$PWD:/w" -w /w --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            mcr.microsoft.com/playwright/python:v1.65.0-noble@sha256:f9294526294a7bdfb8ca8aa7d815c049125a10e73b65d47fb9a80f5d74f284a6 \
+            python tests/screenshot.py http://localhost:3000 grafana-${{ matrix.version }}.png
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: grafana-${{ matrix.version }}
+          path: grafana-${{ matrix.version }}.png
+
       - name: Server version
         if: always()
         run: |

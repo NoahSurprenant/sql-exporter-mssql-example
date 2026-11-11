@@ -1,5 +1,6 @@
-# SQL Server on Linux, a one-shot setup container, sql_exporter on :9399 (metrics), and an
-# OpenTelemetry Collector writing SQL Server events (queries, plans, procedures) to ./out.
+# SQL Server on Linux, a one-shot setup container, sql_exporter on :9399 (metrics), an
+# OpenTelemetry Collector sending SQL Server events (queries, plans, procedures) to ./out and Loki,
+# and Prometheus, Loki and Grafana to look at both: http://localhost:3000.
 #
 #   docker compose up -d
 #   curl -s localhost:9399/metrics | grep ^mssql_
@@ -72,7 +73,10 @@ services:
     depends_on:
       setup:
         condition: service_completed_successfully
-    command: ["--config=/etc/otelcol/config.yaml"]
+      loki:
+        condition: service_started
+    # config.yaml, plus loki.yaml's second pipeline into Loki.
+    command: ["--config=/etc/otelcol/config.yaml", "--config=/etc/otelcol/loki.yaml"]
     # Root only so the file exporter can write to the bind-mounted ./out whatever its owner; the
     # collector itself needs no privileges.
     user: "0:0"
@@ -82,4 +86,38 @@ services:
       GODEBUG: ${EXPORTER_GODEBUG:-}
     volumes:
       - ./otelcol/config.yaml:/etc/otelcol/config.yaml:ro
+      - ./otelcol/loki.yaml:/etc/otelcol/loki.yaml:ro
       - ./out:/out
+
+  # Prometheus scraping sql_exporter, Loki receiving the collector's events over OTLP, and Grafana
+  # with both as data sources and a dashboard: http://localhost:3000 (no login, local use only).
+  prometheus:
+    image: prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
+    volumes:
+      - ./stack/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  loki:
+    image: grafana/loki:3.7.9@sha256:0db216b630ae1f348a1584c67f3cead8b4c1fc839169a39501db664744158e28
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./stack/loki.yaml:/etc/loki/loki.yaml:ro
+    ports:
+      - "3100:3100"
+
+  grafana:
+    image: grafana/grafana:13.3.1@sha256:0615ec4fbd4072004b7d86b46ded63013a74b7d6eb1119273dd89e8fa25c13cf
+    depends_on: [prometheus, loki]
+    environment:
+      # Anonymous admin with no login form: fine for a throwaway local stack, never for a real one.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/sql-server.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./stack/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./stack/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"

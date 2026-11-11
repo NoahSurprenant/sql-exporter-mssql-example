@@ -58,6 +58,13 @@ logs signal is at
 
 Needs Docker with Compose.
 
+Once it is up, open **http://localhost:3000**: Grafana, no login, with the **SQL Server example** dashboard.
+Its top half is sql_exporter's metrics from Prometheus (throughput, connections, top statements,
+top procedures, missing-index suggestions, waits); its bottom half the collector's events from Loki
+(top queries, execution plans, procedures and their definitions, running queries). The events need
+the workload to run twice, a collection apart: `docker compose run --rm setup workload`, or the
+`check_events.py` line below, which does it. Prometheus is on :9090 and Loki on :3100.
+
 ```sh
 docker compose up -d                        # SQL Server 2022; MSSQL_VERSION=2017, 2019 or 2025 for others
 # With MSSQL_VERSION=2017 also set EXPORTER_GODEBUG=x509negativeserial=1 (see compose.yaml)
@@ -65,6 +72,7 @@ python3 tests/check_metrics.py              # every collector query returned dat
 curl -s localhost:9399/metrics | grep '^mssql_query_executions_total'
 # Reruns the workload until the collector has reported the query, plan and procedure events
 sudo python3 tests/check_events.py --events out/events.jsonl --workload "docker compose run --rm -T setup workload"
+python3 tests/check_grafana.py              # every dashboard panel returns data, through Grafana
 docker compose down
 ```
 
@@ -109,7 +117,9 @@ differs between versions, drops out of the scrape), and checks that the workload
 query statistics. Then [`tests/check_events.py`](tests/check_events.py) runs the OpenTelemetry
 Collector beside it (the container on Linux and in WSL 2, the Windows build natively) and checks for
 an ExampleShop top query, its plan, `dbo.OrdersAtTotal` in the top procedures, and its definition.
-Each job's summary has a table of every metric and every event type.
+The Linux jobs also run [`tests/check_grafana.py`](tests/check_grafana.py), which queries every
+dashboard panel through Grafana, and upload a screenshot of the dashboard as an artifact. Each
+job's summary has a table of every metric and every event type.
 
 ## Adding a query
 

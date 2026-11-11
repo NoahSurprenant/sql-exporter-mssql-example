@@ -1,0 +1,39 @@
+# Layered over config.yaml by compose.yaml (a second --config: maps merge, lists are replaced): also
+# send the events to Loki, shaped for reading in Grafana. The Windows job runs config.yaml alone.
+processors:
+  # Loki makes service.name a stream label (service_name); the receiver sets none.
+  resource/loki:
+    attributes:
+      - key: service.name
+        value: sqlserver
+        action: upsert
+  transform/loki:
+    error_mode: ignore
+    log_statements:
+      - statements:
+          # The event name as a log attribute, so it lands in Loki's structured metadata and can be
+          # filtered on: | event_name="db.server.query_plan".
+          - set(log.attributes["event_name"], log.event_name)
+          # The readable part of each event as the log line; the rest stays as structured metadata.
+          # The plan and the definition move rather than copy: they are large, and structured
+          # metadata is capped at 64 KB a line.
+          - set(log.body, log.attributes["db.query.text"]) where log.event_name == "db.server.top_query"
+          - set(log.body, log.attributes["sqlserver.query_plan"]) where log.event_name == "db.server.query_plan"
+          - delete_key(log.attributes, "sqlserver.query_plan") where log.event_name == "db.server.query_plan"
+          - set(log.body, log.attributes["sqlserver.procedure_name"]) where log.event_name == "db.server.top_procedure"
+          - set(log.body, log.attributes["sqlserver.procedure.definition"]) where log.event_name == "db.server.procedure_definition"
+          - delete_key(log.attributes, "sqlserver.procedure.definition") where log.event_name == "db.server.procedure_definition"
+          - set(log.body, log.attributes["db.query.text"]) where log.event_name == "db.server.query_sample"
+
+exporters:
+  # Loki's native OTLP endpoint.
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+
+service:
+  pipelines:
+    # The file pipeline stays as config.yaml has it, unshaped, for tests/check_events.py.
+    logs/loki:
+      receivers: [sql_server]
+      processors: [resource/loki, transform/loki, batch]
+      exporters: [otlphttp/loki]
