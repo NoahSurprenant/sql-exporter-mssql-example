@@ -69,9 +69,10 @@ sql_exporter can also run as a Windows service; see its
 - **Windows**: SQL Server Developer edition installed on a `windows-2022` runner with
   [mssqlsuite](https://github.com/potatoqualitee/mssqlsuite), once per version, scraped two ways:
   - the checksum-verified Windows build of sql_exporter on the same machine, over localhost;
-  - the Linux build inside WSL 2 (Ubuntu, a real Linux kernel in its own VM), connecting to the
-    Windows host over WSL's virtual network and through the Windows firewall: a Linux exporter
-    scraping a Windows database server, as in a typical Kubernetes deployment.
+  - the same sql_exporter container as `compose.yaml`, on Docker Engine inside WSL 2 (Ubuntu, a
+    Linux VM with its own kernel and address), connecting to the Windows host over WSL's virtual
+    network and through the Windows firewall: a Linux Docker host scraping a Windows database
+    server, as in a typical Kubernetes deployment.
 
 Both run [`tests/check_metrics.py`](tests/check_metrics.py), which fails if any `metric_name` in
 the collector files has no samples (a query that errors, for a missing permission or a DMV that
