@@ -48,7 +48,7 @@ def read_events(path):
     return events
 
 
-def check(events):
+def check(events, procedures=True):
     """The checks still failing, as messages; empty when all pass."""
     def find(name, predicate):
         return [a for n, a in events if n == name and a.get("db.namespace") == "ExampleShop" and predicate(a)]
@@ -58,6 +58,8 @@ def check(events):
         failures.append("db.server.top_query: no ExampleShop statement on dbo.Orders")
     if not find("db.server.query_plan", lambda a: "<ShowPlanXML" in str(a.get("sqlserver.query_plan", ""))):
         failures.append("db.server.query_plan: no ExampleShop execution plan (ShowPlanXML)")
+    if not procedures:
+        return failures
     # The receiver names procedures [schema].[name].
     if not find("db.server.top_procedure", lambda a: a.get("sqlserver.procedure_name") == "[dbo].[OrdersAtTotal]"):
         names = sorted({str(a.get("sqlserver.procedure_name")) for n, a in events if n == "db.server.top_procedure"})
@@ -73,6 +75,10 @@ def main():
     parser.add_argument("--events", required=True)
     parser.add_argument("--workload", required=True)
     parser.add_argument("--timeout", type=int, default=300)
+    # SQL Server 2017 before CU3 has no sys.dm_exec_procedure_stats.total_spills, which the
+    # receiver's procedure query reads: db.server.top_procedure (and so procedure_definition) can't
+    # work there.
+    parser.add_argument("--no-procedures", action="store_true")
     args = parser.parse_args()
 
     deadline = time.monotonic() + args.timeout
@@ -80,7 +86,7 @@ def main():
         subprocess.run(args.workload, shell=True, check=True, stdout=subprocess.DEVNULL)
         time.sleep(ROUND_SECONDS)
         events = read_events(args.events)
-        failures = check(events)
+        failures = check(events, procedures=not args.no_procedures)
         if not failures or time.monotonic() > deadline:
             break
         print(f"{len(events)} events so far, waiting on: {'; '.join(failures)}")

@@ -93,7 +93,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # A real SQL Server installation on Windows (Developer edition, default instance on
-      # localhost:1433, mixed-mode authentication), not a container.
+      # localhost:1433, mixed-mode authentication), not a container. RTM, no cumulative update: for
+      # 2017 that is before CU3, so the collector's procedure events are skipped there.
       - name: Install SQL Server ${{ matrix.version }}
         uses: potatoqualitee/mssqlsuite@bc850f242e5fe551e36cea6fa4bed608c58fa489 # v2
         with:
@@ -165,7 +166,8 @@ jobs:
             -RedirectStandardError "$env:RUNNER_TEMP/otelcol.log"
           try {
             python tests/check_events.py --events $env:EVENTS_FILE `
-              --workload "sqlcmd -S localhost -U sa -P ${{ env.MSSQL_SA_PASSWORD }} -C -i sql/workload.sql"
+              --workload "sqlcmd -S localhost -U sa -P ${{ env.MSSQL_SA_PASSWORD }} -C -i sql/workload.sql" `
+              ${{ matrix.version == '2017' && '--no-procedures' || '' }}
             if ($LASTEXITCODE -ne 0) { throw "event check failed" }
           } finally {
             Stop-Process -Id $collector.Id -ErrorAction SilentlyContinue
@@ -228,4 +230,5 @@ jobs:
             "$collector_image" --config=/etc/otelcol/config.yaml
           trap 'docker logs sql-exporter; docker logs --tail 50 otel-collector; docker rm -f sql-exporter otel-collector > /dev/null' EXIT
           python3 tests/check_events.py --events /tmp/out/events.jsonl \
-            --workload "sqlcmd.exe -S localhost -U sa -P '${{ env.MSSQL_SA_PASSWORD }}' -C -i '$(wslpath -w sql/workload.sql)'"
+            --workload "sqlcmd.exe -S localhost -U sa -P '${{ env.MSSQL_SA_PASSWORD }}' -C -i '$(wslpath -w sql/workload.sql)'" \
+            ${{ matrix.version == '2017' && '--no-procedures' || '' }}

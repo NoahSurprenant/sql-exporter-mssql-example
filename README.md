@@ -42,6 +42,11 @@ Metrics can't carry a query's full text or its execution plan. For those, the st
 | `db.server.procedure_definition` | The source of each of those procedures |
 | `db.server.query_sample` | What is executing at the moment of collection, with blocking |
 
+The procedure events need SQL Server 2017 CU3 or later (`sys.dm_exec_procedure_stats.total_spills`):
+on 2017 RTM the receiver logs `Invalid column name 'total_spills'` and reports none, which is why the
+Windows 2017 jobs, installed without updates, skip those checks. `mssql_procedure_stats` works on
+every version.
+
 Like sql_exporter it pulls, logging in as its own `otel_collector` login. It reports deltas, so a
 statement shows up from its second collection on, if it ran again in between. Here the events go
 to `out/events.jsonl`; in production the logs pipeline would export to Loki or another log store,
