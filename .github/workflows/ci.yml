@@ -42,7 +42,8 @@ jobs:
   linux:
     name: Linux container, SQL Server ${{ matrix.version }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # The 2022 job on main also collects for 15 minutes for the Pages site.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -86,6 +87,17 @@ jobs:
 
       # The GitHub Pages site (pages/): Grafana's own web app showing a snapshot of the dashboard, with
       # its few API calls answered from a recording, so it needs no server. Built from the 2022 job.
+      # The snapshot covers 15 minutes (pages/snapshot.py), so fill them: the workload every 10-40
+      # seconds, uneven so the graphs show some shape. Only when the site is published.
+      - name: Collect for the Pages site
+        if: matrix.version == '2022' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          end=$((SECONDS + 15 * 60))
+          while [ $SECONDS -lt $end ]; do
+            docker compose run --rm -T setup workload > /dev/null
+            sleep $((RANDOM % 31 + 10))
+          done
+
       - name: Build the Pages site
         if: matrix.version == '2022'
         run: |
