@@ -1,0 +1,83 @@
+# Per-stored-procedure statistics from the plan cache (sys.dm_exec_procedure_stats): how often each
+# procedure runs, how long it takes, its CPU and its reads. The procedure-level counterpart of
+# mssql_query_stats, which reports the statements inside them one by one.
+#
+# Needs VIEW SERVER STATE, plus VIEW ANY DEFINITION for the procedure's name: without it the label
+# falls back to "object_id <n>". The counters are cumulative since the procedure's plan was cached:
+# a restart, a recompile or the plan being evicted resets them, which rate() treats as a counter
+# reset.
+#
+# Cardinality is bounded: the top 20 procedures per database by total elapsed time. Labels:
+# database and procedure (schema.name).
+collector_name: mssql_procedure_stats
+
+# A walk of the plan cache, like mssql_query_stats; once a minute is plenty.
+min_interval: 60s
+
+metrics:
+  - metric_name: mssql_procedure_executions_total
+    type: counter
+    help: 'Executions of the procedure since its plan was cached (top 20 per database by elapsed time).'
+    key_labels: [database, procedure]
+    values: [executions]
+    query_ref: mssql_procedure_stats
+  - metric_name: mssql_procedure_elapsed_seconds_total
+    type: counter
+    help: 'Total elapsed time of the procedure, in seconds.'
+    key_labels: [database, procedure]
+    values: [elapsed_seconds]
+    query_ref: mssql_procedure_stats
+  - metric_name: mssql_procedure_cpu_seconds_total
+    type: counter
+    help: 'Total CPU (worker) time of the procedure, in seconds.'
+    key_labels: [database, procedure]
+    values: [cpu_seconds]
+    query_ref: mssql_procedure_stats
+  - metric_name: mssql_procedure_logical_reads_total
+    type: counter
+    help: 'Total 8 KB pages the procedure read, from memory or disk.'
+    key_labels: [database, procedure]
+    values: [logical_reads]
+    query_ref: mssql_procedure_stats
+  - metric_name: mssql_procedure_physical_reads_total
+    type: counter
+    help: 'Total 8 KB pages the procedure had to read from disk.'
+    key_labels: [database, procedure]
+    values: [physical_reads]
+    query_ref: mssql_procedure_stats
+  - metric_name: mssql_procedure_max_elapsed_seconds
+    type: gauge
+    help: 'Longest single execution of the procedure since its plan was cached, in seconds.'
+    key_labels: [database, procedure]
+    values: [max_elapsed_seconds]
+    query_ref: mssql_procedure_stats
+
+queries:
+  - query_name: mssql_procedure_stats
+    query: |
+      WITH stats AS (
+        SELECT
+          ps.database_id,
+          ps.object_id,
+          SUM(ps.execution_count) AS executions,
+          SUM(ps.total_elapsed_time) / 1e6 AS elapsed_seconds,
+          SUM(ps.total_worker_time) / 1e6 AS cpu_seconds,
+          SUM(ps.total_logical_reads) AS logical_reads,
+          SUM(ps.total_physical_reads) AS physical_reads,
+          MAX(ps.max_elapsed_time) / 1e6 AS max_elapsed_seconds
+        FROM sys.dm_exec_procedure_stats AS ps
+        -- Above 4 leaves out master, tempdb, model and msdb.
+        WHERE ps.database_id > 4
+        GROUP BY ps.database_id, ps.object_id
+      ), ranked AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY database_id ORDER BY elapsed_seconds DESC) AS rn
+        FROM stats
+      )
+      SELECT
+        COALESCE(DB_NAME(database_id), 'unknown') AS [database],
+        COALESCE(
+          OBJECT_SCHEMA_NAME(object_id, database_id) + '.' + OBJECT_NAME(object_id, database_id),
+          CONCAT('object_id ', object_id)) AS [procedure],
+        executions, elapsed_seconds, cpu_seconds, logical_reads, physical_reads, max_elapsed_seconds
+      FROM ranked
+      WHERE rn <= 20

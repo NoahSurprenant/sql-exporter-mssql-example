@@ -24,6 +24,8 @@ do. This example logs in as a dedicated `sql_exporter` login with only `VIEW SER
 | --- | --- | --- |
 | [`mssql_standard`](collectors/mssql_standard.collector.yml) | sql_exporter's upstream example, unchanged | Connections per database, deadlocks, user errors, page life expectancy, batch requests, buffer cache hit ratio, I/O stalls per database, memory, page faults |
 | [`mssql_query_stats`](collectors/mssql_query_stats.collector.yml) | Written for this example | The plan cache's top 20 statements per database (executions, elapsed and CPU time, logical and physical reads, rows, slowest run), and the top 25 wait types |
+| [`mssql_procedure_stats`](collectors/mssql_procedure_stats.collector.yml) | Written for this example | The top 20 stored procedures per database by elapsed time (executions, elapsed and CPU time, logical and physical reads, slowest run), named `schema.procedure` |
+| [`mssql_missing_indexes`](collectors/mssql_missing_indexes.collector.yml) | Written for this example | The optimizer's top 10 missing-index suggestions per database (table, equality / inequality / included columns, estimated improvement, impact %, seeks and scans it would have served), and a count of all suggestions per database |
 
 ## Run it locally
 

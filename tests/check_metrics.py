@@ -94,6 +94,19 @@ def main():
     if not values("mssql_query_executions_total", r'query="[^"]*FROM dbo\.Orders AS o WHERE o\.CustomerId'):
         failures.append("the workload's orders-by-customer statement is missing from the query label")
 
+    # The stored procedures, by name: the exporter's login resolves them with VIEW ANY DEFINITION
+    # alone, without a user in ExampleShop. 50 calls each.
+    for procedure in ("dbo.CustomerOrders", "dbo.OrdersAtTotal", "dbo.RegionRevenue"):
+        calls = values("mssql_procedure_executions_total",
+                       rf'database="ExampleShop".*procedure="{re.escape(procedure)}"')
+        if not calls or max(calls) < 50:
+            failures.append(f"mssql_procedure_executions_total for {procedure} is {calls}, expected >= 50")
+
+    # OrdersAtTotal filters on Orders.Total, which has no index.
+    if not values("mssql_missing_index_improvement",
+                  r'database="ExampleShop".*equality_columns="\[Total\]".*table="[^"]*\[Orders\]"'):
+        failures.append("no missing-index suggestion for ExampleShop's Orders.Total")
+
     # workload.sql ends with a divide by zero.
     if not any(v >= 1 for v in values("mssql_user_errors")):
         failures.append("mssql_user_errors is 0; the workload's divide by zero was not counted")

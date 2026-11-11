@@ -52,3 +52,19 @@ BEGIN
     SELECT i % 1000 + 1, (i % 500) + 0.99, DATEADD(minute, -i, SYSUTCDATETIME()) FROM n;
 END
 GO
+
+-- Stored procedures for the workload, which mssql_procedure_stats reports on. OrdersAtTotal filters
+-- on a column with no index, so SQL Server records a missing-index suggestion for it
+-- (mssql_missing_indexes).
+CREATE OR ALTER PROCEDURE dbo.CustomerOrders @customer int AS
+    SELECT o.Id, o.Total, o.PlacedAt FROM dbo.Orders AS o WHERE o.CustomerId = @customer ORDER BY o.PlacedAt DESC;
+GO
+CREATE OR ALTER PROCEDURE dbo.OrdersAtTotal @total decimal(10, 2) AS
+    SELECT o.Id, o.CustomerId, o.PlacedAt FROM dbo.Orders AS o WHERE o.Total = @total;
+GO
+CREATE OR ALTER PROCEDURE dbo.RegionRevenue @region nvarchar(20) AS
+    SELECT c.Region, COUNT(*) AS Orders, SUM(o.Total) AS Revenue
+    FROM dbo.Customers AS c JOIN dbo.Orders AS o ON o.CustomerId = c.Id
+    WHERE c.Region = @region
+    GROUP BY c.Region;
+GO

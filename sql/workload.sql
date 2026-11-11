@@ -29,6 +29,19 @@ BEGIN
 END
 GO
 
+-- The stored procedures: 50 calls each.
+DECLARE @j int = 0;
+WHILE @j < 50
+BEGIN
+    DECLARE @c int = @j * 7 % 1000 + 1, @t decimal(10, 2) = @j % 500 + 0.99,
+        @r nvarchar(20) = CHOOSE(@j % 4 + 1, N'North', N'South', N'East', N'West');
+    EXEC dbo.CustomerOrders @customer = @c;
+    EXEC dbo.OrdersAtTotal @total = @t;
+    EXEC dbo.RegionRevenue @region = @r;
+    SET @j += 1;
+END
+GO
+
 -- A full scan, so one statement stands out by reads.
 SELECT COUNT(*) AS LargeOrders FROM dbo.Orders WHERE Total * 2 > 900;
 GO

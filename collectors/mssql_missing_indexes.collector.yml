@@ -1,0 +1,81 @@
+# Missing-index suggestions: indexes the query optimizer wanted while compiling plans and didn't
+# find (sys.dm_db_missing_index_*). A suggestion, not an instruction: they overlap, ignore existing
+# indexes that are nearly right, and never count the cost of maintaining the index on writes.
+# Review them, don't apply them blindly.
+#
+# Needs only VIEW SERVER STATE: the table's name comes from the DMV itself, so no access to the
+# databases is required. The DMVs are emptied when SQL Server restarts, and a database's entries when
+# it goes offline or an index is created or dropped on the table.
+#
+# Cardinality is bounded: the top 10 suggestions per database by estimated improvement, with the
+# column lists cut to 120 characters. mssql_missing_indexes counts every suggestion per database,
+# beyond the top 10, so a growing backlog shows even when the detail doesn't.
+collector_name: mssql_missing_indexes
+
+min_interval: 60s
+
+metrics:
+  - metric_name: mssql_missing_index_improvement
+    type: gauge
+    help: 'Estimated improvement of a missing-index suggestion: avg query cost x avg impact % x (seeks + scans), the usual ranking. Top 10 per database.'
+    key_labels: [database, table, equality_columns, inequality_columns, included_columns]
+    values: [improvement]
+    query_ref: mssql_missing_indexes
+  - metric_name: mssql_missing_index_avg_impact_percent
+    type: gauge
+    help: 'Average percentage by which the suggestion would cut the cost of the queries that wanted it.'
+    key_labels: [database, table, equality_columns, inequality_columns, included_columns]
+    values: [avg_impact_percent]
+    query_ref: mssql_missing_indexes
+  - metric_name: mssql_missing_index_uses_total
+    type: counter
+    help: 'Seeks and scans the suggested index would have served since the suggestion was recorded.'
+    key_labels: [database, table, equality_columns, inequality_columns, included_columns]
+    values: [uses]
+    query_ref: mssql_missing_indexes
+  - metric_name: mssql_missing_indexes
+    type: gauge
+    help: 'Missing-index suggestions per database, all of them.'
+    key_labels: [database]
+    values: [suggestions]
+    query: |
+      SELECT COALESCE(DB_NAME(database_id), 'unknown') AS [database], COUNT(*) AS suggestions
+      FROM sys.dm_db_missing_index_details
+      WHERE database_id > 4
+      GROUP BY database_id
+
+queries:
+  - query_name: mssql_missing_indexes
+    # Grouped by the labels as they are exported: the DMV can hold the same suggestion twice, and two
+    # can differ only past the 120-character cut, either of which would export one series twice.
+    query: |
+      WITH suggestions AS (
+        SELECT
+          d.database_id,
+          d.statement AS [table],
+          LEFT(COALESCE(d.equality_columns, ''), 120) AS equality_columns,
+          LEFT(COALESCE(d.inequality_columns, ''), 120) AS inequality_columns,
+          LEFT(COALESCE(d.included_columns, ''), 120) AS included_columns,
+          s.avg_total_user_cost * s.avg_user_impact / 100.0 * (s.user_seeks + s.user_scans) AS improvement,
+          s.avg_user_impact,
+          s.user_seeks + s.user_scans AS uses
+        FROM sys.dm_db_missing_index_details AS d
+        JOIN sys.dm_db_missing_index_groups AS g ON g.index_handle = d.index_handle
+        JOIN sys.dm_db_missing_index_group_stats AS s ON s.group_handle = g.index_group_handle
+        -- Above 4 leaves out master, tempdb, model and msdb.
+        WHERE d.database_id > 4
+      ), grouped AS (
+        SELECT database_id, [table], equality_columns, inequality_columns, included_columns,
+          SUM(improvement) AS improvement, MAX(avg_user_impact) AS avg_impact_percent, SUM(uses) AS uses
+        FROM suggestions
+        GROUP BY database_id, [table], equality_columns, inequality_columns, included_columns
+      ), ranked AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY database_id ORDER BY improvement DESC) AS rn
+        FROM grouped
+      )
+      SELECT
+        COALESCE(DB_NAME(database_id), 'unknown') AS [database],
+        [table], equality_columns, inequality_columns, included_columns,
+        improvement, avg_impact_percent, uses
+      FROM ranked
+      WHERE rn <= 10
