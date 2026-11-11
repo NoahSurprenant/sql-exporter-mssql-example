@@ -80,7 +80,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "up{job=\"sql_exporter\"}",
+          "expr": "up{job=\"sql_exporter\", target=\"mssql\"}",
           "instant": true
         }
       ]
@@ -203,6 +203,16 @@
       ],
       "transformations": [
         {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
           "id": "organize",
           "options": {
             "excludeByName": {
@@ -216,7 +226,10 @@
               "Value": "Elapsed (s)",
               "database": "Database",
               "query": "Statement",
-              "query_hash": "Query hash"
+              "query_hash": "Query hash",
+              "mssql_query_elapsed_seconds_total": "Elapsed (s)",
+              "mssql_procedure_elapsed_seconds_total": "Elapsed (s)",
+              "mssql_missing_index_improvement": "Elapsed (s)"
             }
           }
         }
@@ -264,6 +277,16 @@
       ],
       "transformations": [
         {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
           "id": "organize",
           "options": {
             "excludeByName": {
@@ -276,7 +299,10 @@
             "renameByName": {
               "Value": "Elapsed (s)",
               "database": "Database",
-              "procedure": "Procedure"
+              "procedure": "Procedure",
+              "mssql_query_elapsed_seconds_total": "Elapsed (s)",
+              "mssql_procedure_elapsed_seconds_total": "Elapsed (s)",
+              "mssql_missing_index_improvement": "Elapsed (s)"
             }
           }
         }
@@ -324,6 +350,16 @@
       ],
       "transformations": [
         {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
           "id": "organize",
           "options": {
             "excludeByName": {
@@ -339,7 +375,10 @@
               "table": "Table",
               "equality_columns": "Equality",
               "inequality_columns": "Inequality",
-              "included_columns": "Include"
+              "included_columns": "Include",
+              "mssql_query_elapsed_seconds_total": "Improvement",
+              "mssql_procedure_elapsed_seconds_total": "Improvement",
+              "mssql_missing_index_improvement": "Improvement"
             }
           }
         }
@@ -424,7 +463,8 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"sqlserver\"} | event_name=\"db.server.top_query\""
+          "expr": "{service_name=\"sqlserver\"} | event_name=\"db.server.top_query\" | db_namespace!~\"master|msdb|model|tempdb\"",
+          "maxLines": 200
         }
       ]
     },
@@ -456,7 +496,8 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"sqlserver\"} | event_name=\"db.server.query_plan\""
+          "expr": "{service_name=\"sqlserver\"} | event_name=\"db.server.query_plan\" | db_namespace!~\"master|msdb|model|tempdb\"",
+          "maxLines": 50
         }
       ]
     },
@@ -488,7 +529,8 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"sqlserver\"} | event_name=~\"db.server.(top_procedure|procedure_definition)\""
+          "expr": "{service_name=\"sqlserver\"} | event_name=~\"db.server.(top_procedure|procedure_definition)\"",
+          "maxLines": 200
         }
       ]
     },
@@ -520,7 +562,8 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"sqlserver\"} | event_name=\"db.server.query_sample\""
+          "expr": "{service_name=\"sqlserver\"} | event_name=\"db.server.query_sample\" | db_namespace!~\"master|msdb|model|tempdb\"",
+          "maxLines": 200
         }
       ]
     }

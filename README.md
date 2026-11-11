@@ -54,6 +54,25 @@ where a `query_hash` seen on a slow-query dashboard leads to its full text and p
 logs signal is at
 [development stability](https://github.com/open-telemetry/opentelemetry-collector/blob/main/docs/component-stability.md#development).
 
+## Browse it: GitHub Pages
+
+**https://noahsurprenant.github.io/sql-exporter-mssql-example/** is the Grafana dashboard from the
+latest CI run on `main` (SQL Server 2022), with no server behind it:
+
+- CI builds a Grafana snapshot of the dashboard ([`pages/snapshot.py`](pages/snapshot.py)): every
+  panel's data stored in it, and a fixed time range, the window the run collected in.
+- A browser opens the snapshot and records the handful of API calls Grafana makes to show it
+  ([`pages/record.py`](pages/record.py)).
+- The site is Grafana's own web app (its `public/` files), the recording, and a service worker
+  ([`pages/sw.js`](pages/sw.js)) that answers those calls from it. The first visit installs the
+  worker and reloads.
+
+Everything in the snapshot works as in Grafana: tooltips, zooming into the window, the tables,
+expanding log lines to read a query or its plan. Anything that needs a live backend doesn't:
+another time range, Explore, editing. It is a reproduction of Grafana for reading, not supported by
+Grafana, and a Grafana upgrade may need [`pages/`](pages) adjusting; CI checks the built site with
+Grafana stopped ([`pages/check_site.py`](pages/check_site.py)) before publishing it.
+
 ## Run it locally
 
 Needs Docker with Compose.

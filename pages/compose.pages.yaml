@@ -1,0 +1,9 @@
+# Layered over compose.yaml when building the GitHub Pages site: Grafana serves itself from the
+# site's address, so the page it renders already points its assets and links there.
+services:
+  grafana:
+    environment:
+      GF_SERVER_ROOT_URL: https://noahsurprenant.github.io/sql-exporter-mssql-example/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      # No live (websocket) updates: there is nothing behind the static site to push them.
+      GF_LIVE_MAX_CONNECTIONS: "0"

@@ -1,2 +1,5 @@
 out/
 grafana-*.png
+_site/
+serve/
+pages-site.png

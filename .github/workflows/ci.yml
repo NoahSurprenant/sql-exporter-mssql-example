@@ -84,6 +84,48 @@ jobs:
           name: grafana-${{ matrix.version }}
           path: grafana-${{ matrix.version }}.png
 
+      # The GitHub Pages site (pages/): Grafana's own web app showing a snapshot of the dashboard, with
+      # its few API calls answered from a recording, so it needs no server. Built from the 2022 job.
+      - name: Build the Pages site
+        if: matrix.version == '2022'
+        run: |
+          docker compose -f compose.yaml -f pages/compose.pages.yaml up -d grafana
+          base=http://localhost:3000/sql-exporter-mssql-example
+          for i in $(seq 60); do curl -sf "$base/api/health" > /dev/null && break; sleep 2; done
+          key=$(python3 pages/snapshot.py "$base" stack/grafana/dashboards/sql-server.json)
+          mkdir -p _site
+          docker compose cp grafana:/usr/share/grafana/public _site/
+          find _site/public -name '*.map' -delete
+          docker run --rm --network host -v "$PWD:/w" -w /w mcr.microsoft.com/playwright/python:v1.65.0-noble@sha256:f9294526294a7bdfb8ca8aa7d815c049125a10e73b65d47fb9a80f5d74f284a6 \
+            sh -c "pip install -q --break-system-packages playwright==1.65.0 &&
+                   python pages/record.py $base $key _site && chown -R $(id -u):$(id -g) _site"
+          cp pages/sw.js _site/
+          python3 pages/build.py _site "$key"
+          du -sh _site
+
+      # The site with Grafana stopped and only static files behind it, as GitHub Pages serves it.
+      - name: Check the Pages site
+        if: matrix.version == '2022'
+        run: |
+          docker compose stop grafana
+          mkdir -p serve && ln -sfn ../_site serve/sql-exporter-mssql-example
+          (cd serve && python3 ../pages/pages_server.py 8099 > /dev/null 2>&1 &)
+          docker run --rm --network host -v "$PWD:/w" -w /w mcr.microsoft.com/playwright/python:v1.65.0-noble@sha256:f9294526294a7bdfb8ca8aa7d815c049125a10e73b65d47fb9a80f5d74f284a6 \
+            sh -c "pip install -q --break-system-packages playwright==1.65.0 &&
+                   python pages/check_site.py http://localhost:8099/sql-exporter-mssql-example/ pages-site.png &&
+                   chown $(id -u):$(id -g) pages-site.png"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: matrix.version == '2022'
+        with:
+          name: pages-site
+          path: pages-site.png
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        if: matrix.version == '2022' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          path: _site
+
       - name: Server version
         if: always()
         run: |
@@ -252,3 +294,19 @@ jobs:
           python3 tests/check_events.py --events /tmp/out/events.jsonl \
             --workload "sqlcmd.exe -S localhost -U sa -P '${{ env.MSSQL_SA_PASSWORD }}' -C -i '$(wslpath -w sql/workload.sql)'" \
             ${{ matrix.version == '2017' && '--no-procedures' || '' }}
+
+  pages:
+    name: Deploy the Pages site
+    needs: linux
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
