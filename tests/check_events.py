@@ -58,8 +58,10 @@ def check(events):
         failures.append("db.server.top_query: no ExampleShop statement on dbo.Orders")
     if not find("db.server.query_plan", lambda a: "<ShowPlanXML" in str(a.get("sqlserver.query_plan", ""))):
         failures.append("db.server.query_plan: no ExampleShop execution plan (ShowPlanXML)")
-    if not find("db.server.top_procedure", lambda a: a.get("sqlserver.procedure_name") == "OrdersAtTotal"):
-        failures.append("db.server.top_procedure: no dbo.OrdersAtTotal")
+    # The receiver names procedures [schema].[name].
+    if not find("db.server.top_procedure", lambda a: a.get("sqlserver.procedure_name") == "[dbo].[OrdersAtTotal]"):
+        names = sorted({str(a.get("sqlserver.procedure_name")) for n, a in events if n == "db.server.top_procedure"})
+        failures.append(f"db.server.top_procedure: no [dbo].[OrdersAtTotal] (saw {names})")
     if not find("db.server.procedure_definition",
                 lambda a: "OrdersAtTotal" in str(a.get("sqlserver.procedure.definition", ""))):
         failures.append("db.server.procedure_definition: no definition of dbo.OrdersAtTotal")
