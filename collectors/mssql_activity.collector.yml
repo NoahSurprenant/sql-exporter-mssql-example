@@ -53,12 +53,14 @@ metrics:
     help: 'CPU used by SQL Server over the last minute, as a percentage of the machine (scheduler monitor ring buffer).'
     values: [cpu_percent]
     # The ring buffer's SystemIdle would give the rest of the machine, but it is always 0 on Linux.
+    # SQL Server writes a record a minute: 0 until the first, in a server's first minute.
     query: |
-      SELECT TOP (1)
-        CONVERT(xml, record).value('(./Record/SchedulerMonitorEvent/SystemHealth/ProcessUtilization)[1]', 'int') AS cpu_percent
-      FROM sys.dm_os_ring_buffers
-      WHERE ring_buffer_type = N'RING_BUFFER_SCHEDULER_MONITOR' AND record LIKE N'%<SystemHealth>%'
-      ORDER BY [timestamp] DESC
+      SELECT COALESCE((
+        SELECT TOP (1)
+          CONVERT(xml, record).value('(./Record/SchedulerMonitorEvent/SystemHealth/ProcessUtilization)[1]', 'int')
+        FROM sys.dm_os_ring_buffers
+        WHERE ring_buffer_type = N'RING_BUFFER_SCHEDULER_MONITOR' AND record LIKE N'%<SystemHealth>%'
+        ORDER BY [timestamp] DESC), 0) AS cpu_percent
 
 queries:
   - query_name: mssql_blocking
