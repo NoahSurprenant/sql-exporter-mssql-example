@@ -83,4 +83,5 @@ SQL Server version and on both operating systems.
 
 ## License
 
-MIT. `collectors/mssql_standard.collector.yml` is from sql_exporter, also MIT.
+MIT. `collectors/mssql_standard.collector.yml` is a byte-for-byte copy of sql_exporter's
+`examples/mssql` at the pinned version (also MIT); CI fails if it drifts from upstream.

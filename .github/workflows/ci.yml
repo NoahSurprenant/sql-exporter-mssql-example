@@ -23,6 +23,20 @@ env:
   SQL_EXPORTER_VERSION: 0.24.13
 
 jobs:
+  # mssql_standard is upstream's example collector, kept byte-for-byte: it ships in neither the
+  # binary nor the image, so a copy is the only way to use it. Fails when the copy differs from the
+  # file at the pinned exporter version, so bumping SQL_EXPORTER_VERSION surfaces upstream changes.
+  upstream-collector:
+    name: mssql_standard matches upstream
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Compare with sql_exporter's examples/mssql at SQL_EXPORTER_VERSION
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/burningalchemist/sql_exporter/$SQL_EXPORTER_VERSION/examples/mssql/mssql_standard.collector.yml" \
+            | diff -u - collectors/mssql_standard.collector.yml
+
   linux:
     name: Linux container, SQL Server ${{ matrix.version }}
     runs-on: ubuntu-24.04
