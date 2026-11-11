@@ -71,9 +71,13 @@ jobs:
 
       - name: Screenshot the dashboard
         run: |
-          docker run --rm --network host -v "$PWD:/w" -w /w --user "$(id -u):$(id -g)" -e HOME=/tmp \
+          # The image has the browsers but not the Python package, so it is installed first, at the
+          # image's version; the screenshot is handed back to the runner's user.
+          docker run --rm --network host -v "$PWD:/w" -w /w \
             mcr.microsoft.com/playwright/python:v1.65.0-noble@sha256:f9294526294a7bdfb8ca8aa7d815c049125a10e73b65d47fb9a80f5d74f284a6 \
-            python tests/screenshot.py http://localhost:3000 grafana-${{ matrix.version }}.png
+            sh -c "pip install -q --break-system-packages playwright==1.65.0 &&
+                   python tests/screenshot.py http://localhost:3000 grafana-${{ matrix.version }}.png &&
+                   chown $(id -u):$(id -g) grafana-${{ matrix.version }}.png"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
