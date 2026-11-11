@@ -3,7 +3,7 @@
 # sqlcmd that ships in the SQL Server image.
 set -euo pipefail
 
-# mssql-tools18 in current images; older 2019 images had only mssql-tools.
+# mssql-tools18 in current images; 2017 and older 2019 images have only mssql-tools.
 for candidate in /opt/mssql-tools18/bin/sqlcmd /opt/mssql-tools/bin/sqlcmd; do
   if [ -x "$candidate" ]; then sqlcmd=$candidate; break; fi
 done

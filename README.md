@@ -1,7 +1,7 @@
 # sql_exporter + SQL Server example
 
 A working example of [sql_exporter](https://github.com/burningalchemist/sql_exporter) exposing
-Prometheus metrics from Microsoft SQL Server, tested in CI against SQL Server 2019, 2022 and 2025,
+Prometheus metrics from Microsoft SQL Server, tested in CI against SQL Server 2017, 2019, 2022 and 2025,
 both as Linux containers and as native Windows installations.
 
 ## How it works
@@ -30,7 +30,7 @@ do. This example logs in as a dedicated `sql_exporter` login with only `VIEW SER
 Needs Docker with Compose.
 
 ```sh
-docker compose up -d                        # SQL Server 2022; MSSQL_VERSION=2019 or 2025 for others
+docker compose up -d                        # SQL Server 2022; MSSQL_VERSION=2017, 2019 or 2025 for others
 python3 tests/check_metrics.py              # every collector query returned data
 curl -s localhost:9399/metrics | grep '^mssql_query_executions_total'
 docker compose down
@@ -61,7 +61,7 @@ sql_exporter can also run as a Windows service; see its
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push, pull request, and weekly:
 
-- **Linux**: the Compose stack above, once per SQL Server image (`2019-latest`, `2022-latest`,
+- **Linux**: the Compose stack above, once per SQL Server image (`2017-latest`, `2019-latest`, `2022-latest`,
   `2025-latest`).
 - **Windows**: SQL Server Developer edition installed on a `windows-2022` runner with
   [mssqlsuite](https://github.com/potatoqualitee/mssqlsuite), once per version, and the

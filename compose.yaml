@@ -3,7 +3,7 @@
 #   docker compose up -d
 #   curl -s localhost:9399/metrics | grep ^mssql_
 #
-# MSSQL_VERSION picks the SQL Server image: 2019, 2022 (default) or 2025.
+# MSSQL_VERSION picks the SQL Server image: 2017, 2019, 2022 (default) or 2025.
 # The passwords are examples for a throwaway local container; change them for anything else.
 x-passwords: &passwords
   MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Example.Sa.Passw0rd}

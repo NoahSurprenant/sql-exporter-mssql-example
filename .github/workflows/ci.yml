@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: ["2019", "2022", "2025"]
+        version: ["2017", "2019", "2022", "2025"]
     env:
       MSSQL_VERSION: ${{ matrix.version }}
     steps:
@@ -61,7 +61,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: ["2019", "2022", "2025"]
+        version: ["2017", "2019", "2022", "2025"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
