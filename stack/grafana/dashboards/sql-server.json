@@ -15,7 +15,7 @@
   "panels": [
     {
       "type": "row",
-      "title": "Metrics: sql_exporter → Prometheus",
+      "title": "Overview",
       "id": 1,
       "collapsed": false,
       "gridPos": {
@@ -28,18 +28,30 @@
     },
     {
       "type": "stat",
-      "title": "Exporter can reach SQL Server",
+      "title": "Exporter reaches SQL Server",
+      "description": "sql_exporter's own up: 1 when it could log in and run its collectors.",
       "id": 2,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 5,
+        "h": 4,
         "w": 4,
         "x": 0,
         "y": 1
       },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "up{job=\"sql_exporter\", target=\"mssql\"}",
+          "instant": true
+        }
+      ],
       "fieldConfig": {
         "defaults": {
           "mappings": [
@@ -47,16 +59,17 @@
               "type": "value",
               "options": {
                 "0": {
-                  "text": "down",
-                  "color": "red"
+                  "text": "down"
                 },
                 "1": {
-                  "text": "up",
-                  "color": "green"
+                  "text": "up"
                 }
               }
             }
           ],
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -73,6 +86,32 @@
         },
         "overrides": []
       },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "SQL Server CPU",
+      "description": "CPU used by SQL Server over the last minute (mssql_cpu_percent).",
+      "id": 3,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
       "targets": [
         {
           "refId": "A",
@@ -80,36 +119,305 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "up{job=\"sql_exporter\", target=\"mssql\"}",
+          "expr": "mssql_cpu_percent",
           "instant": true
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      }
     },
     {
-      "type": "timeseries",
-      "title": "Batch requests / s",
-      "id": 3,
+      "type": "stat",
+      "title": "Blocked requests",
+      "description": "Requests waiting on another session's lock right now.",
+      "id": 4,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 5,
-        "w": 10,
-        "x": 4,
+        "h": 4,
+        "w": 4,
+        "x": 8,
         "y": 1
       },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "mssql_blocked_requests",
+          "instant": true
+        }
+      ],
       "fieldConfig": {
         "defaults": {
-          "unit": "reqps"
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
       },
       "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Deadlocks",
+      "description": "Deadlocks in the dashboard's time range.",
+      "id": 5,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(mssql_deadlocks[$__range]))",
+          "instant": true
         }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "User errors",
+      "description": "Errors returned to clients in the time range: failed statements, constraint violations, deadlock victims.",
+      "id": 6,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(mssql_user_errors[$__range]))",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Page life expectancy",
+      "description": "Seconds a data page stays in memory. Falling fast, or low for the server's memory, means memory pressure.",
+      "id": 7,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "mssql_page_life_expectancy_seconds",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 60
+              },
+              {
+                "color": "green",
+                "value": 300
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Batch requests / s",
+      "description": "Batches received per second: overall throughput.",
+      "id": 8,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 5
       },
       "targets": [
         {
@@ -119,27 +427,20 @@
             "uid": "prometheus"
           },
           "expr": "rate(mssql_batch_requests[1m])",
-          "legendFormat": "batch requests"
+          "legendFormat": "batches"
         }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Connections by database",
-      "id": 4,
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 10,
-        "x": 14,
-        "y": 1
-      },
+      ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short"
+          "unit": "reqps",
+          "min": 0,
+          "custom": {
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "none"
+            },
+            "showPoints": "never"
+          }
         },
         "overrides": []
       },
@@ -147,47 +448,26 @@
         "legend": {
           "displayMode": "list",
           "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
         }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "mssql_connections",
-          "legendFormat": "{{db}}"
-        }
-      ]
+      }
     },
     {
-      "type": "table",
-      "title": "Top statements (plan cache)",
-      "description": "mssql_query_stats: the top 20 statements per database by total elapsed time since their plans were cached.",
-      "id": 5,
+      "type": "timeseries",
+      "title": "Requests by state",
+      "description": "Executing user requests: running on a CPU, runnable (waiting for one), suspended (waiting on a lock, I/O or memory).",
+      "id": 9,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 9,
-        "w": 24,
-        "x": 0,
-        "y": 6
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "options": {
-        "showHeader": true,
-        "sortBy": [
-          {
-            "displayName": "Elapsed (s)",
-            "desc": true
-          }
-        ]
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 5
       },
       "targets": [
         {
@@ -196,50 +476,100 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "mssql_query_elapsed_seconds_total",
-          "instant": true,
-          "format": "table"
+          "expr": "mssql_requests",
+          "legendFormat": "{{status}}"
         }
       ],
-      "transformations": [
-        {
-          "id": "labelsToFields",
-          "options": {
-            "mode": "columns"
-          }
-        },
-        {
-          "id": "merge",
-          "options": {}
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "__name__": true,
-              "instance": true,
-              "job": true,
-              "target": true
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
             },
-            "renameByName": {
-              "Value": "Elapsed (s)",
-              "database": "Database",
-              "query": "Statement",
-              "query_hash": "Query hash",
-              "mssql_query_elapsed_seconds_total": "Elapsed (s)",
-              "mssql_procedure_elapsed_seconds_total": "Elapsed (s)",
-              "mssql_missing_index_improvement": "Elapsed (s)"
-            }
+            "showPoints": "never"
           }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
         }
-      ]
+      }
     },
     {
-      "type": "table",
-      "title": "Top stored procedures",
-      "description": "mssql_procedure_stats: the top 20 procedures per database by total elapsed time.",
-      "id": 6,
+      "type": "timeseries",
+      "title": "Connections by database",
+      "description": "Open sessions per database.",
+      "id": 10,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "mssql_connections{db!=\"\"}",
+          "legendFormat": "{{db}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "none"
+            },
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Blocking and deadlocks",
+      "id": 11,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Blocking",
+      "description": "Requests blocked right now, and how long the longest of them has waited.",
+      "id": 12,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -248,20 +578,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 15
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "options": {
-        "showHeader": true,
-        "sortBy": [
-          {
-            "displayName": "Elapsed (s)",
-            "desc": true
-          }
-        ]
+        "y": 13
       },
       "targets": [
         {
@@ -270,49 +587,56 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "mssql_procedure_elapsed_seconds_total",
-          "instant": true,
-          "format": "table"
+          "expr": "mssql_blocked_requests",
+          "legendFormat": "blocked requests"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "mssql_head_blockers",
+          "legendFormat": "head blockers"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "mssql_blocked_wait_seconds_max",
+          "legendFormat": "longest wait (s)"
         }
       ],
-      "transformations": [
-        {
-          "id": "labelsToFields",
-          "options": {
-            "mode": "columns"
-          }
-        },
-        {
-          "id": "merge",
-          "options": {}
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "__name__": true,
-              "instance": true,
-              "job": true,
-              "target": true
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "none"
             },
-            "renameByName": {
-              "Value": "Elapsed (s)",
-              "database": "Database",
-              "procedure": "Procedure",
-              "mssql_query_elapsed_seconds_total": "Elapsed (s)",
-              "mssql_procedure_elapsed_seconds_total": "Elapsed (s)",
-              "mssql_missing_index_improvement": "Elapsed (s)"
-            }
+            "showPoints": "never"
           }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
         }
-      ]
+      }
     },
     {
-      "type": "table",
-      "title": "Missing-index suggestions",
-      "description": "mssql_missing_indexes: the optimizer's top 10 suggestions per database by estimated improvement. Review before creating.",
-      "id": 7,
+      "type": "timeseries",
+      "title": "Longest running request",
+      "description": "Elapsed time of the longest user request executing at each scrape.",
+      "id": 13,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -321,20 +645,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 15
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "options": {
-        "showHeader": true,
-        "sortBy": [
-          {
-            "displayName": "Improvement",
-            "desc": true
-          }
-        ]
+        "y": 13
       },
       "targets": [
         {
@@ -343,21 +654,437 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "mssql_missing_index_improvement",
+          "expr": "mssql_longest_request_seconds",
+          "legendFormat": "longest request"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": {
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "none"
+            },
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "table",
+      "title": "Blocking chains",
+      "description": "From the collector's query samples (db.server.query_sample): every request seen blocked, the session blocking it, what it waited on, and its statement.",
+      "id": 14,
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"sqlserver\"} | event_name=\"db.server.query_sample\" | db_namespace!~\"master|msdb|model|tempdb\" | sqlserver_blocking_session_id!=\"\" | sqlserver_blocking_session_id!=\"0\" | line_format \"{{.event_name}}\"",
+          "queryType": "range",
+          "maxLines": 1000
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "replace": false,
+            "keepTime": true
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "sqlserver_session_id": {
+                "operation": "groupby",
+                "aggregations": []
+              },
+              "sqlserver_blocking_session_id": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              },
+              "db_namespace": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              },
+              "sqlserver_wait_type": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              },
+              "sqlserver_wait_time": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              },
+              "sqlserver_wait_resource": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              },
+              "db_query_text": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "sqlserver_session_id": "Session",
+              "sqlserver_blocking_session_id (lastNotNull)": "Blocked by",
+              "db_namespace (lastNotNull)": "Database",
+              "sqlserver_wait_type (lastNotNull)": "Wait type",
+              "sqlserver_wait_time (lastNotNull)": "Wait (ms)",
+              "sqlserver_wait_resource (lastNotNull)": "Resource",
+              "db_query_text (lastNotNull)": "Statement"
+            },
+            "indexByName": {
+              "sqlserver_session_id": 0,
+              "sqlserver_blocking_session_id (lastNotNull)": 1,
+              "db_namespace (lastNotNull)": 2,
+              "sqlserver_wait_type (lastNotNull)": 3,
+              "sqlserver_wait_time (lastNotNull)": 4,
+              "sqlserver_wait_resource (lastNotNull)": 5,
+              "db_query_text (lastNotNull)": 6
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Deadlock graphs",
+      "description": "Every deadlock, from SQL Server's system_health session (db.server.deadlock). Expand one: the processes, the statements they ran, the resources they held and wanted, and which was chosen as the victim.",
+      "id": 15,
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"sqlserver\"} | event_name=\"db.server.deadlock\"",
+          "queryType": "range",
+          "maxLines": 50
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "prettifyLogMessage": false
+      }
+    },
+    {
+      "type": "row",
+      "title": "Statements and procedures in the time range",
+      "id": 16,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Top statements",
+      "description": "mssql_query_stats over the time range: the 20 statements with the most elapsed time. Avg is per execution. Statements whose plan left the cache drop out.",
+      "id": 17,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(20, increase(mssql_query_elapsed_seconds_total[$__range]) > 0)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "increase(mssql_query_executions_total[$__range]) and on(database, query_hash) topk(20, increase(mssql_query_elapsed_seconds_total[$__range]) > 0)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "increase(mssql_query_cpu_seconds_total[$__range]) and on(database, query_hash) topk(20, increase(mssql_query_elapsed_seconds_total[$__range]) > 0)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "increase(mssql_query_logical_reads_total[$__range]) and on(database, query_hash) topk(20, increase(mssql_query_elapsed_seconds_total[$__range]) > 0)",
           "instant": true,
           "format": "table"
         }
       ],
-      "transformations": [
-        {
-          "id": "labelsToFields",
-          "options": {
-            "mode": "columns"
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "cellOptions": {
+              "type": "auto"
+            }
           }
         },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Elapsed"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg elapsed"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg CPU"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Executions"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg reads"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Database"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Statement"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 520
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Executions"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg reads"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Elapsed",
+            "desc": true
+          }
+        ],
+        "cellHeight": "sm"
+      },
+      "transformations": [
         {
           "id": "merge",
           "options": {}
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "binary",
+            "alias": "Avg",
+            "binary": {
+              "left": "Value #A",
+              "operator": "/",
+              "right": "Value #B"
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "binary",
+            "alias": "CPU / exec",
+            "binary": {
+              "left": "Value #C",
+              "operator": "/",
+              "right": "Value #B"
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "binary",
+            "alias": "Reads / exec",
+            "binary": {
+              "left": "Value #D",
+              "operator": "/",
+              "right": "Value #B"
+            },
+            "replaceFields": false
+          }
         },
         {
           "id": "organize",
@@ -367,27 +1094,39 @@
               "__name__": true,
               "instance": true,
               "job": true,
-              "target": true
+              "target": true,
+              "Value #C": true,
+              "Value #D": true
             },
             "renameByName": {
-              "Value": "Improvement",
               "database": "Database",
-              "table": "Table",
-              "equality_columns": "Equality",
-              "inequality_columns": "Inequality",
-              "included_columns": "Include",
-              "mssql_query_elapsed_seconds_total": "Improvement",
-              "mssql_procedure_elapsed_seconds_total": "Improvement",
-              "mssql_missing_index_improvement": "Improvement"
+              "query": "Statement",
+              "Value #B": "Executions",
+              "Value #A": "Elapsed",
+              "Avg": "Avg elapsed",
+              "CPU / exec": "Avg CPU",
+              "Reads / exec": "Avg reads",
+              "query_hash": "Query hash"
+            },
+            "indexByName": {
+              "database": 0,
+              "query": 1,
+              "Value #B": 2,
+              "Value #A": 3,
+              "Avg": 4,
+              "CPU / exec": 5,
+              "Reads / exec": 6,
+              "query_hash": 7
             }
           }
         }
       ]
     },
     {
-      "type": "timeseries",
-      "title": "Top waits (s waited / s)",
-      "id": 8,
+      "type": "table",
+      "title": "Top stored procedures",
+      "description": "mssql_procedure_stats over the time range: the 20 procedures with the most elapsed time.",
+      "id": 18,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -396,19 +1135,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 22
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        }
+        "y": 45
       },
       "targets": [
         {
@@ -417,29 +1144,290 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "topk(10, rate(mssql_wait_seconds_total[5m]))",
-          "legendFormat": "{{wait_type}}"
+          "expr": "topk(20, increase(mssql_procedure_elapsed_seconds_total[$__range]) > 0)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "increase(mssql_procedure_executions_total[$__range]) and on(database, procedure) topk(20, increase(mssql_procedure_elapsed_seconds_total[$__range]) > 0)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "increase(mssql_procedure_cpu_seconds_total[$__range]) and on(database, procedure) topk(20, increase(mssql_procedure_elapsed_seconds_total[$__range]) > 0)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "increase(mssql_procedure_logical_reads_total[$__range]) and on(database, procedure) topk(20, increase(mssql_procedure_elapsed_seconds_total[$__range]) > 0)",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Elapsed"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg elapsed"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg CPU"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Executions"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg reads"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Executions"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg reads"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Elapsed",
+            "desc": true
+          }
+        ],
+        "cellHeight": "sm"
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "binary",
+            "alias": "Avg",
+            "binary": {
+              "left": "Value #A",
+              "operator": "/",
+              "right": "Value #B"
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "binary",
+            "alias": "CPU / exec",
+            "binary": {
+              "left": "Value #C",
+              "operator": "/",
+              "right": "Value #B"
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "binary",
+            "alias": "Reads / exec",
+            "binary": {
+              "left": "Value #D",
+              "operator": "/",
+              "right": "Value #B"
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true,
+              "target": true,
+              "Value #C": true,
+              "Value #D": true
+            },
+            "renameByName": {
+              "database": "Database",
+              "procedure": "Procedure",
+              "Value #B": "Executions",
+              "Value #A": "Elapsed",
+              "Avg": "Avg elapsed",
+              "CPU / exec": "Avg CPU",
+              "Reads / exec": "Avg reads"
+            },
+            "indexByName": {
+              "database": 0,
+              "procedure": 1,
+              "Value #B": 2,
+              "Value #A": 3,
+              "Avg": 4,
+              "CPU / exec": 5,
+              "Reads / exec": 6
+            }
+          }
         }
       ]
     },
     {
+      "type": "bargauge",
+      "title": "Top waits",
+      "description": "What requests waited on most in the time range (mssql_wait_stats, idle waits left out). LCK_*: blocking; PAGEIOLATCH_*: reading pages from disk; WRITELOG: log writes; SOS_SCHEDULER_YIELD / CXPACKET: CPU and parallelism.",
+      "id": 19,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(8, increase(mssql_wait_seconds_total[$__range]) > 0)",
+          "instant": true,
+          "legendFormat": "{{wait_type}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": {
+            "mode": "continuous-BlYlRd"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
       "type": "row",
-      "title": "Logs: OpenTelemetry Collector sql_server receiver → Loki",
-      "id": 9,
+      "title": "Query plans (OpenTelemetry Collector)",
+      "id": 20,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 29
+        "y": 59
       },
       "panels": []
     },
     {
-      "type": "logs",
-      "title": "Top queries",
-      "description": "db.server.top_query: the most expensive statements since the previous collection. Expand a line for executions, CPU, reads and sqlserver_query_hash.",
-      "id": 10,
+      "type": "table",
+      "title": "Plan warnings",
+      "description": "The plans of the top queries (db.server.query_plan), with what usually makes a plan slow pulled out of the XML: an implicit conversion that blocks a seek, a key lookup per row, a scan, a spill to tempdb, a missing index, a join with no predicate. Cost is the optimizer's estimate.",
+      "id": 21,
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -448,13 +1436,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 30
-      },
-      "options": {
-        "showTime": true,
-        "wrapLogMessage": true,
-        "enableLogDetails": true,
-        "sortOrder": "Descending"
+        "y": 60
       },
       "targets": [
         {
@@ -463,31 +1445,303 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"sqlserver\"} | event_name=\"db.server.top_query\" | db_namespace!~\"master|msdb|model|tempdb\"",
-          "maxLines": 200
+          "expr": "{service_name=\"sqlserver\"} | event_name=\"db.server.query_plan\" | db_namespace!~\"master|msdb|model|tempdb\" | line_format \"{{.event_name}}\"",
+          "queryType": "range",
+          "maxLines": 500
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Implicit conversion"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "true": {
+                        "text": "⚠ yes",
+                        "color": "orange"
+                      },
+                      "false": {
+                        "text": ""
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Key lookup"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "true": {
+                        "text": "⚠ yes",
+                        "color": "orange"
+                      },
+                      "false": {
+                        "text": ""
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Scan"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "true": {
+                        "text": "⚠ yes",
+                        "color": "orange"
+                      },
+                      "false": {
+                        "text": ""
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Missing index"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "true": {
+                        "text": "⚠ yes",
+                        "color": "orange"
+                      },
+                      "false": {
+                        "text": ""
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Spill"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "true": {
+                        "text": "⚠ yes",
+                        "color": "orange"
+                      },
+                      "false": {
+                        "text": ""
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "No join predicate"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "true": {
+                        "text": "⚠ yes",
+                        "color": "orange"
+                      },
+                      "false": {
+                        "text": ""
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "replace": false,
+            "keepTime": true
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "sqlserver_query_hash": {
+                "operation": "groupby",
+                "aggregations": []
+              },
+              "db_namespace": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              },
+              "plan_statement": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              },
+              "plan_cost": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              },
+              "plan_dop": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              },
+              "plan_implicit_conversion": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              },
+              "plan_key_lookup": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              },
+              "plan_scan": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              },
+              "plan_missing_index": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              },
+              "plan_spill": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              },
+              "plan_no_join_predicate": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "lastNotNull"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "sqlserver_query_hash": "Query hash",
+              "db_namespace (lastNotNull)": "Database",
+              "plan_statement (lastNotNull)": "Statement",
+              "plan_cost (lastNotNull)": "Est. cost",
+              "plan_dop (lastNotNull)": "DOP",
+              "plan_implicit_conversion (lastNotNull)": "Implicit conversion",
+              "plan_key_lookup (lastNotNull)": "Key lookup",
+              "plan_scan (lastNotNull)": "Scan",
+              "plan_missing_index (lastNotNull)": "Missing index",
+              "plan_spill (lastNotNull)": "Spill",
+              "plan_no_join_predicate (lastNotNull)": "No join predicate"
+            },
+            "indexByName": {
+              "sqlserver_query_hash": 0,
+              "db_namespace (lastNotNull)": 1,
+              "plan_statement (lastNotNull)": 2,
+              "plan_cost (lastNotNull)": 3,
+              "plan_dop (lastNotNull)": 4,
+              "plan_implicit_conversion (lastNotNull)": 5,
+              "plan_key_lookup (lastNotNull)": 6,
+              "plan_scan (lastNotNull)": 7,
+              "plan_missing_index (lastNotNull)": 8,
+              "plan_spill (lastNotNull)": 9,
+              "plan_no_join_predicate (lastNotNull)": 10
+            }
+          }
         }
       ]
     },
     {
       "type": "logs",
       "title": "Execution plans",
-      "description": "db.server.query_plan: the ShowPlan XML of each top query; match it by sqlserver_query_hash and sqlserver_query_plan_hash.",
-      "id": 11,
+      "description": "The plan XML itself (db.server.query_plan): match it to the table above by sqlserver_query_hash in the line's details. Save one as .sqlplan to open it graphically in SSMS or Azure Data Studio.",
+      "id": 22,
       "datasource": {
         "type": "loki",
         "uid": "loki"
       },
       "gridPos": {
-        "h": 10,
+        "h": 9,
         "w": 24,
         "x": 0,
-        "y": 39
-      },
-      "options": {
-        "showTime": true,
-        "wrapLogMessage": true,
-        "enableLogDetails": true,
-        "sortOrder": "Descending"
+        "y": 69
       },
       "targets": [
         {
@@ -497,30 +1751,36 @@
             "uid": "loki"
           },
           "expr": "{service_name=\"sqlserver\"} | event_name=\"db.server.query_plan\" | db_namespace!~\"master|msdb|model|tempdb\"",
+          "queryType": "range",
           "maxLines": 50
         }
-      ]
-    },
-    {
-      "type": "logs",
-      "title": "Top procedures and their definitions",
-      "description": "db.server.top_procedure and db.server.procedure_definition.",
-      "id": 12,
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 24,
-        "x": 0,
-        "y": 49
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
       },
       "options": {
         "showTime": true,
         "wrapLogMessage": true,
         "enableLogDetails": true,
-        "sortOrder": "Descending"
+        "sortOrder": "Descending",
+        "prettifyLogMessage": false
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Procedure definitions",
+      "description": "The source of the procedures in the top list (db.server.procedure_definition).",
+      "id": 23,
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 78
       },
       "targets": [
         {
@@ -529,31 +1789,787 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"sqlserver\"} | event_name=~\"db.server.(top_procedure|procedure_definition)\"",
-          "maxLines": 200
+          "expr": "{service_name=\"sqlserver\"} | event_name=\"db.server.procedure_definition\"",
+          "queryType": "range",
+          "maxLines": 50
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "prettifyLogMessage": false
+      }
     },
     {
-      "type": "logs",
-      "title": "Running now (query samples)",
-      "description": "db.server.query_sample: what was executing at the moment of each collection, with blocking.",
-      "id": 13,
+      "type": "row",
+      "title": "Indexes",
+      "id": 24,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 86
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Missing-index suggestions",
+      "description": "mssql_missing_indexes: indexes the optimizer wanted, top 10 per database by estimated improvement. Overlapping suggestions are common: combine them, and weigh the write cost, before creating any.",
+      "id": 25,
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "prometheus",
+        "uid": "prometheus"
       },
       "gridPos": {
         "h": 7,
-        "w": 24,
+        "w": 14,
         "x": 0,
-        "y": 58
+        "y": 87
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max without(instance, job) (mssql_missing_index_improvement)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max without(instance, job) (mssql_missing_index_uses_total)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max without(instance, job) (mssql_missing_index_avg_impact_percent)",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Improvement"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Uses"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg impact"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Uses"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
       },
       "options": {
-        "showTime": true,
-        "wrapLogMessage": true,
-        "enableLogDetails": true,
-        "sortOrder": "Descending"
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Improvement",
+            "desc": true
+          }
+        ],
+        "cellHeight": "sm"
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true,
+              "target": true
+            },
+            "renameByName": {
+              "database": "Database",
+              "table": "Table",
+              "equality_columns": "Equality",
+              "inequality_columns": "Inequality",
+              "included_columns": "Include",
+              "Value #A": "Improvement",
+              "Value #B": "Uses",
+              "Value #C": "Avg impact"
+            },
+            "indexByName": {
+              "database": 0,
+              "table": 1,
+              "equality_columns": 2,
+              "inequality_columns": 3,
+              "included_columns": 4,
+              "Value #A": 5,
+              "Value #B": 6,
+              "Value #C": 7
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Unused indexes",
+      "description": "mssql_index_usage: indexes every write maintains but no query has read since SQL Server started. Candidates to drop, once the uptime covers a full business cycle.",
+      "id": 26,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 10,
+        "x": 14,
+        "y": 87
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max without(instance, job) (mssql_unused_index_writes_total)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max without(instance, job) (mssql_unused_index_bytes)",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Writes"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Size"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Writes"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Writes",
+            "desc": true
+          }
+        ],
+        "cellHeight": "sm"
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true,
+              "target": true
+            },
+            "renameByName": {
+              "database": "Database",
+              "table": "Table",
+              "index": "Index",
+              "Value #A": "Writes",
+              "Value #B": "Size"
+            },
+            "indexByName": {
+              "database": 0,
+              "table": 1,
+              "index": 2,
+              "Value #A": 3,
+              "Value #B": 4
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Storage, I/O and backups",
+      "id": 27,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 94
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Database size",
+      "description": "Data and log file sizes per database, and how much of the log is in use. A log that stays full is waiting on a log backup (full recovery) or a long transaction.",
+      "id": 28,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 95
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max without(instance, job) (mssql_database_data_bytes)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max without(instance, job) (mssql_database_log_bytes)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max without(instance, job) (mssql_database_log_used_bytes)",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Data"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Log"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Log used"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Data",
+            "desc": true
+          }
+        ],
+        "cellHeight": "sm"
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "binary",
+            "alias": "Log used",
+            "binary": {
+              "left": "Value #C",
+              "operator": "/",
+              "right": "Value #B"
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true,
+              "target": true,
+              "Value #C": true
+            },
+            "renameByName": {
+              "database": "Database",
+              "Value #A": "Data",
+              "Value #B": "Log",
+              "Log used": "Log used"
+            },
+            "indexByName": {
+              "database": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Log used": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "I/O latency",
+      "description": "Average time per read and per write, per database and file type (mssql_io_files): stall divided by count. Log writes above a few ms slow every commit.",
+      "id": 29,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 95
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(mssql_io_file_read_stall_seconds[5m]) / rate(mssql_io_file_reads[5m]) > 0",
+          "legendFormat": "{{db}} {{file_type}} read"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(mssql_io_file_write_stall_seconds[5m]) / rate(mssql_io_file_writes[5m]) > 0",
+          "legendFormat": "{{db}} {{file_type}} write"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": {
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "none"
+            },
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "tempdb",
+      "description": "tempdb space by use: temp tables (user objects), sorts and hashes (internal objects), row versions (version store).",
+      "id": 30,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 95
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "mssql_tempdb_bytes{use!=\"free\"}",
+          "legendFormat": "{{use}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": {
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
+            },
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "table",
+      "title": "Last backup",
+      "description": "Time since each database's last backup of each type finished. Never backed up shows as never.",
+      "id": 31,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 20,
+        "x": 0,
+        "y": 103
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "mssql_last_backup_age_seconds",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Since last backup"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dtdurations"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Since last backup"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "-1": {
+                        "text": "never",
+                        "color": "red"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Since last backup",
+            "desc": true
+          }
+        ],
+        "cellHeight": "sm"
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true,
+              "target": true
+            },
+            "renameByName": {
+              "database": "Database",
+              "type": "Type",
+              "Value": "Since last backup"
+            },
+            "indexByName": {
+              "database": 0,
+              "type": 1,
+              "Value": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Log growths",
+      "description": "Times a transaction log had to grow in the time range: each growth stalls writes; size the log so it doesn't have to.",
+      "id": 32,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 103
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(mssql_log_growths[$__range]))",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "type": "row",
+      "title": "SQL Server error log (Linux compose stack)",
+      "id": 33,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 111
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Failed logins",
+      "description": "\"Login failed\" entries in the error log in the time range: a wrong password, a missing login, or someone guessing.",
+      "id": 34,
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 112
       },
       "targets": [
         {
@@ -562,10 +2578,83 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"sqlserver\"} | event_name=\"db.server.query_sample\" | db_namespace!~\"master|msdb|model|tempdb\"",
-          "maxLines": 200
+          "expr": "sum(count_over_time({service_name=\"sqlserver\"} | event_name=\"db.server.errorlog\" |= \"Login failed\" [$__range]))",
+          "queryType": "instant"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "noValue": "0",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Error log",
+      "description": "SQL Server's own error log (event db.server.errorlog), read from the container's log directory: startup, recovery, failed logins, I/O and memory errors. Not collected from the Windows runs.",
+      "id": 35,
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 20,
+        "x": 4,
+        "y": 112
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"sqlserver\"} | event_name=\"db.server.errorlog\"",
+          "queryType": "range",
+          "maxLines": 500
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "prettifyLogMessage": false
+      }
     }
   ]
 }

@@ -108,6 +108,18 @@ def main():
                   r'database="ExampleShop".*equality_columns="\[Total\]".*table="[^"]*\[Orders\]"'):
         failures.append("no missing-index suggestion for ExampleShop's Orders.Total")
 
+    # IX_Orders_PlacedAt: maintained by every insert, read by nothing (sql/setup.sql).
+    if not values("mssql_unused_index_writes_total", r'database="ExampleShop".*index="IX_Orders_PlacedAt"'):
+        failures.append("mssql_unused_index_writes_total has no IX_Orders_PlacedAt")
+
+    # setup.sql backs ExampleShop up; the system databases never are (-1).
+    if not any(v >= 0 for v in values("mssql_last_backup_age_seconds", r'database="ExampleShop".*type="full"')):
+        failures.append("mssql_last_backup_age_seconds shows no full backup of ExampleShop")
+
+    # sql/contention makes a deadlock.
+    if not any(v >= 1 for v in values("mssql_deadlocks")):
+        failures.append("mssql_deadlocks is 0: run sql/contention before this check")
+
     # workload.sql ends with a divide by zero.
     if not any(v >= 1 for v in values("mssql_user_errors")):
         failures.append("mssql_user_errors is 0; the workload's divide by zero was not counted")

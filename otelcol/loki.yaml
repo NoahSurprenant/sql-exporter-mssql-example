@@ -1,5 +1,24 @@
 # Layered over config.yaml by compose.yaml (a second --config: maps merge, lists are replaced): also
-# send the events to Loki, shaped for reading in Grafana. The Windows job runs config.yaml alone.
+# send the events to Loki, shaped for reading in Grafana, and SQL Server's own error log, which
+# compose.yaml shares with this container. The Windows job runs config.yaml alone.
+receivers:
+  # SQL Server's error log: startups, failed logins, I/O and memory errors. UTF-8 on Linux (it is
+  # UTF-16 on Windows); an entry starts with its timestamp and may run over several lines.
+  filelog/errorlog:
+    include: [/mssql/log/errorlog]
+    encoding: utf-8
+    start_at: beginning
+    multiline:
+      line_start_pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{2} '
+    operators:
+      - type: regex_parser
+        regex: '^(?P<time>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{2}) (?P<source>\S+)\s+(?P<message>(?s:.*?))\s*$'
+        timestamp:
+          parse_from: attributes.time
+          layout_type: gotime
+          layout: "2006-01-02 15:04:05.00"
+          location: UTC
+
 processors:
   # Loki makes service.name a stream label (service_name); the receiver sets none.
   resource/loki:
@@ -24,6 +43,26 @@ processors:
           - set(log.body, log.attributes["sqlserver.procedure.definition"]) where log.event_name == "db.server.procedure_definition"
           - delete_key(log.attributes, "sqlserver.procedure.definition") where log.event_name == "db.server.procedure_definition"
           - set(log.body, log.attributes["db.query.text"]) where log.event_name == "db.server.query_sample"
+          # What matters in a plan, pulled out of the XML so a table can show it: the estimated
+          # cost, the degree of parallelism, and the warnings that usually explain a slow plan.
+          - merge_maps(log.attributes, ExtractPatterns(log.body, "StatementText=\"(?P<plan_statement>[^\"]{1,200})"), "upsert") where log.event_name == "db.server.query_plan"
+          - merge_maps(log.attributes, ExtractPatterns(log.body, "StatementSubTreeCost=\"(?P<plan_cost>[0-9.Ee+-]+)\""), "upsert") where log.event_name == "db.server.query_plan"
+          - merge_maps(log.attributes, ExtractPatterns(log.body, " DegreeOfParallelism=\"(?P<plan_dop>[0-9]+)\""), "upsert") where log.event_name == "db.server.query_plan"
+          - set(log.attributes["plan_implicit_conversion"], IsMatch(log.body, "PlanAffectingConvert")) where log.event_name == "db.server.query_plan"
+          - set(log.attributes["plan_spill"], IsMatch(log.body, "SpillToTempDb|SortSpillDetails|HashSpillDetails|ExchangeSpillDetails")) where log.event_name == "db.server.query_plan"
+          - set(log.attributes["plan_missing_index"], IsMatch(log.body, "<MissingIndexes>")) where log.event_name == "db.server.query_plan"
+          - set(log.attributes["plan_key_lookup"], IsMatch(log.body, "Lookup=\"(1|true)\"")) where log.event_name == "db.server.query_plan"
+          - set(log.attributes["plan_scan"], IsMatch(log.body, "PhysicalOp=\"(Table Scan|Clustered Index Scan|Index Scan)\"")) where log.event_name == "db.server.query_plan"
+          - set(log.attributes["plan_no_join_predicate"], IsMatch(log.body, "NoJoinPredicate")) where log.event_name == "db.server.query_plan"
+  transform/errorlog:
+    error_mode: ignore
+    log_statements:
+      - statements:
+          - set(log.event_name, "db.server.errorlog")
+          - set(log.attributes["event_name"], "db.server.errorlog")
+          - set(log.body, log.attributes["message"])
+          - delete_key(log.attributes, "message")
+          - delete_key(log.attributes, "time")
 
 exporters:
   # Loki's native OTLP endpoint.
@@ -34,6 +73,10 @@ service:
   pipelines:
     # The file pipeline stays as config.yaml has it, unshaped, for tests/check_events.py.
     logs/loki:
-      receivers: [sql_server]
-      processors: [resource/loki, transform/loki, batch]
+      receivers: [sql_server, sql_query/deadlocks]
+      processors: [transform/deadlocks, resource/loki, transform/loki, batch]
+      exporters: [otlphttp/loki]
+    logs/errorlog:
+      receivers: [filelog/errorlog]
+      processors: [transform/errorlog, resource/loki, batch]
       exporters: [otlphttp/loki]

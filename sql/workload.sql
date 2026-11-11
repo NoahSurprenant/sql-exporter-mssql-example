@@ -38,6 +38,9 @@ BEGIN
     EXEC dbo.CustomerOrders @customer = @c;
     EXEC dbo.OrdersAtTotal @total = @t;
     EXEC dbo.RegionRevenue @region = @r;
+    -- An nvarchar code against the varchar column: the implicit-conversion plan warning.
+    DECLARE @code nvarchar(20) = CONCAT(N'C', RIGHT(CONCAT(N'0000', @c), 5));
+    EXEC dbo.CustomerByCode @code = @code;
     SET @j += 1;
 END
 GO

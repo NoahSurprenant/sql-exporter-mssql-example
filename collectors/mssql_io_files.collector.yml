@@ -1,0 +1,47 @@
+# Reads and writes, and the time spent stalled on them, per database and file type (ROWS, LOG),
+# from sys.dm_io_virtual_file_stats. Stall divided by count is the disk's latency as SQL Server
+# sees it: rate(stall) / rate(count). A commit waits on the log's writes, so log write latency is
+# what makes saves slow; data-file read latency is what makes cold queries slow.
+#
+# Needs VIEW SERVER STATE and VIEW ANY DEFINITION (sys.master_files).
+collector_name: mssql_io_files
+
+metrics:
+  - metric_name: mssql_io_file_reads
+    type: counter
+    help: 'Reads per database and file type (LOG, ROWS).'
+    key_labels: [db, file_type]
+    values: [reads]
+    query_ref: mssql_io_files
+  - metric_name: mssql_io_file_read_stall_seconds
+    type: counter
+    help: 'Read stall time in seconds per database and file type.'
+    key_labels: [db, file_type]
+    values: [read_stall]
+    query_ref: mssql_io_files
+  - metric_name: mssql_io_file_writes
+    type: counter
+    help: 'Writes per database and file type (LOG, ROWS).'
+    key_labels: [db, file_type]
+    values: [writes]
+    query_ref: mssql_io_files
+  - metric_name: mssql_io_file_write_stall_seconds
+    type: counter
+    help: 'Write stall time in seconds per database and file type.'
+    key_labels: [db, file_type]
+    values: [write_stall]
+    query_ref: mssql_io_files
+
+queries:
+  - query_name: mssql_io_files
+    query: |
+      SELECT
+        CAST(DB_NAME(a.database_id) AS nvarchar(128)) AS [db],
+        b.type_desc AS [file_type],
+        SUM(a.num_of_reads) AS [reads],
+        SUM(a.io_stall_read_ms) / 1000.0 AS [read_stall],
+        SUM(a.num_of_writes) AS [writes],
+        SUM(a.io_stall_write_ms) / 1000.0 AS [write_stall]
+      FROM sys.dm_io_virtual_file_stats(NULL, NULL) AS a
+      INNER JOIN sys.master_files AS b ON a.database_id = b.database_id AND a.file_id = b.file_id
+      GROUP BY a.database_id, b.type_desc

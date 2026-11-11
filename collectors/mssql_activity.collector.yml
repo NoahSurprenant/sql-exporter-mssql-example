@@ -1,0 +1,76 @@
+# What is running right now: requests by state, blocking, the longest request, and SQL Server's
+# CPU. Point-in-time values, read on every scrape (no min_interval): a blocking chain that lasts 20
+# seconds is gone by the next minute.
+#
+# Needs VIEW SERVER STATE. Only user sessions count (sys.dm_exec_sessions.is_user_process: background
+# tasks such as the checkpoint or the health monitor run for as long as the server does, with
+# session ids above 50); the exporter's own session and requests only waiting for work (WAITFOR,
+# Service Broker) are left out too.
+collector_name: mssql_activity
+
+metrics:
+  - metric_name: mssql_requests
+    type: gauge
+    help: 'User requests executing, by status (running, runnable, suspended).'
+    key_labels: [status]
+    values: [requests]
+    query: |
+      -- Every status listed, 0 included, so a quiet server still reports the series.
+      SELECT s.status, COUNT(r.session_id) AS requests
+      FROM (VALUES (N'running'), (N'runnable'), (N'suspended')) AS s(status)
+      LEFT JOIN (sys.dm_exec_requests AS r
+        JOIN sys.dm_exec_sessions AS es ON es.session_id = r.session_id AND es.is_user_process = 1)
+        ON r.status = s.status AND r.session_id <> @@SPID
+        AND r.command NOT IN (N'WAITFOR', N'BROKER_RECEIVE_WAITFOR')
+      GROUP BY s.status
+  - metric_name: mssql_blocked_requests
+    type: gauge
+    help: 'Requests waiting on a lock another session holds.'
+    values: [blocked]
+    query_ref: mssql_blocking
+  - metric_name: mssql_blocked_wait_seconds_max
+    type: gauge
+    help: 'How long the longest-blocked request has been waiting, in seconds; 0 when none is.'
+    values: [longest_wait_seconds]
+    query_ref: mssql_blocking
+  - metric_name: mssql_head_blockers
+    type: gauge
+    help: 'Sessions blocking others while not blocked themselves: where each blocking chain starts.'
+    values: [head_blockers]
+    query_ref: mssql_blocking
+  - metric_name: mssql_longest_request_seconds
+    type: gauge
+    help: 'Elapsed time of the longest-running user request, in seconds; 0 when none is running.'
+    values: [longest_seconds]
+    query: |
+      SELECT COALESCE(MAX(r.total_elapsed_time), 0) / 1e3 AS longest_seconds
+      FROM sys.dm_exec_requests AS r
+      JOIN sys.dm_exec_sessions AS es ON es.session_id = r.session_id AND es.is_user_process = 1
+      WHERE r.session_id <> @@SPID
+        AND r.command NOT IN (N'WAITFOR', N'BROKER_RECEIVE_WAITFOR')
+  - metric_name: mssql_cpu_percent
+    type: gauge
+    help: 'CPU used by SQL Server over the last minute, as a percentage of the machine (scheduler monitor ring buffer).'
+    values: [cpu_percent]
+    # The ring buffer's SystemIdle would give the rest of the machine, but it is always 0 on Linux.
+    query: |
+      SELECT TOP (1)
+        CONVERT(xml, record).value('(./Record/SchedulerMonitorEvent/SystemHealth/ProcessUtilization)[1]', 'int') AS cpu_percent
+      FROM sys.dm_os_ring_buffers
+      WHERE ring_buffer_type = N'RING_BUFFER_SCHEDULER_MONITOR' AND record LIKE N'%<SystemHealth>%'
+      ORDER BY [timestamp] DESC
+
+queries:
+  - query_name: mssql_blocking
+    query: |
+      SELECT
+        COUNT(CASE WHEN r.blocking_session_id <> 0 THEN 1 END) AS blocked,
+        COALESCE(MAX(CASE WHEN r.blocking_session_id <> 0 THEN r.wait_time END), 0) / 1e3 AS longest_wait_seconds,
+        (SELECT COUNT(DISTINCT b.blocking_session_id)
+         FROM sys.dm_exec_requests AS b
+         WHERE b.blocking_session_id <> 0
+           AND NOT EXISTS (SELECT 1 FROM sys.dm_exec_requests AS h
+                           WHERE h.session_id = b.blocking_session_id AND h.blocking_session_id <> 0)) AS head_blockers
+      FROM sys.dm_exec_requests AS r
+      JOIN sys.dm_exec_sessions AS es ON es.session_id = r.session_id AND es.is_user_process = 1
+      WHERE r.session_id <> @@SPID

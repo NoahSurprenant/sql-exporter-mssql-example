@@ -14,7 +14,9 @@ target:
   name: mssql
   # Overridden at startup by --config.data-source-name; the exporter requires a value here.
   data_source_name: 'sqlserver://placeholder:placeholder@localhost:1433'
-  collectors: [mssql_standard, mssql_query_stats, mssql_procedure_stats, mssql_missing_indexes]
+  # Every collector file here: standard, query and procedure stats, missing and unused indexes,
+  # activity and blocking, storage and backups, file I/O.
+  collectors: [mssql_*]
 
 # Relative to this file's directory.
 collector_files:

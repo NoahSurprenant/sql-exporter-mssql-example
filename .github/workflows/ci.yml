@@ -58,6 +58,11 @@ jobs:
       - name: Start SQL Server, setup and sql_exporter
         run: docker compose up -d
 
+      # A 20-second blocking chain, a deadlock and a failed login (sql/contention), for the blocking,
+      # deadlock and error-log checks.
+      - name: Contention
+        run: docker compose run --rm -T setup contention
+
       - name: Check every collector query
         run: python3 tests/check_metrics.py
 
@@ -93,10 +98,14 @@ jobs:
         if: matrix.version == '2022' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           end=$((SECONDS + 15 * 60))
+          i=0
           while [ $SECONDS -lt $end ]; do
             docker compose run --rm -T setup workload > /dev/null
+            # Blocking and a deadlock every few rounds, in the background.
+            if [ $((i++ % 4)) -eq 0 ]; then docker compose run --rm -T setup contention > /dev/null & fi
             sleep $((RANDOM % 31 + 10))
           done
+          wait
 
       - name: Build the Pages site
         if: matrix.version == '2022'
@@ -104,13 +113,14 @@ jobs:
           docker compose -f compose.yaml -f pages/compose.pages.yaml up -d grafana
           base=http://localhost:3000/sql-exporter-mssql-example
           for i in $(seq 60); do curl -sf "$base/api/health" > /dev/null && break; sleep 2; done
-          key=$(python3 pages/snapshot.py "$base" stack/grafana/dashboards/sql-server.json)
           mkdir -p _site
           docker compose cp grafana:/usr/share/grafana/public _site/
           find _site/public -name '*.map' -delete
+          # Publishes the snapshot (the last 15 minutes) and records it.
           docker run --rm --network host -v "$PWD:/w" -w /w mcr.microsoft.com/playwright/python:v1.65.0-noble@sha256:f9294526294a7bdfb8ca8aa7d815c049125a10e73b65d47fb9a80f5d74f284a6 \
             sh -c "pip install -q --break-system-packages playwright==1.65.0 &&
-                   python pages/record.py $base $key _site && chown -R $(id -u):$(id -g) _site"
+                   python pages/record.py $base 15 _site && chown -R $(id -u):$(id -g) _site"
+          key=$(cat _site/key.txt) && rm _site/key.txt
           cp pages/sw.js _site/
           python3 pages/build.py _site "$key"
           du -sh _site
@@ -185,6 +195,8 @@ jobs:
           sqlcmd -S localhost -U sa -P $env:MSSQL_SA_PASSWORD -C -i sql/workload.sql | Out-Null
           sqlcmd -S localhost -U sa -P $env:MSSQL_SA_PASSWORD -C -h -1 -Q "SET NOCOUNT ON; SELECT @@VERSION" |
             Tee-Object -Append -FilePath $env:GITHUB_STEP_SUMMARY
+          # A blocking chain and a deadlock, for the deadlock checks.
+          ./sql/contention/run.ps1
           $global:LASTEXITCODE = 0
 
       - name: Download sql_exporter for Windows

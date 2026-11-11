@@ -11,12 +11,12 @@ from playwright.sync_api import sync_playwright
 url, out = sys.argv[1], sys.argv[2]
 with sync_playwright() as p:
     browser = p.chromium.launch()
-    page = browser.new_page(viewport={"width": 1600, "height": 2200})
+    page = browser.new_page(viewport={"width": 1600, "height": 4400})
     # Not "networkidle": Grafana keeps a live connection open, so the network never goes quiet. Not
-    # kiosk mode either: its panels came out blank in the screenshot. Waits for a table header, which
+    # kiosk mode either: its panels came out blank in the screenshot. Waits for a table column, which
     # only renders once its query has returned.
     page.goto(f"{url}/d/sql-server-example?orgId=1&theme=dark", wait_until="load")
-    page.wait_for_selector("text=Elapsed (s)", timeout=60000)
-    page.wait_for_timeout(8000)
+    page.wait_for_selector("text=Avg elapsed", timeout=60000)
+    page.wait_for_timeout(15000)
     page.screenshot(path=out, full_page=True)
     browser.close()

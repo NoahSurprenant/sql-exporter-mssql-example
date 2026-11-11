@@ -58,6 +58,9 @@ def check(events, procedures=True):
         failures.append("db.server.top_query: no ExampleShop statement on dbo.Orders")
     if not find("db.server.query_plan", lambda a: "<ShowPlanXML" in str(a.get("sqlserver.query_plan", ""))):
         failures.append("db.server.query_plan: no ExampleShop execution plan (ShowPlanXML)")
+    # Deadlocks have no database of their own: the graph names it. sql/contention makes one.
+    if not [a for n, a in events if n == "db.server.deadlock"]:
+        failures.append("db.server.deadlock: no deadlock graph (run sql/contention first)")
     if not procedures:
         return failures
     # The receiver names procedures [schema].[name].

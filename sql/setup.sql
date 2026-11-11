@@ -84,3 +84,35 @@ CREATE OR ALTER PROCEDURE dbo.RegionRevenue @region nvarchar(20) AS
     WHERE c.Region = @region
     GROUP BY c.Region;
 GO
+
+-- A varchar column looked up with an nvarchar parameter: SQL Server has to convert every row's
+-- value, so the index on Code can't be sought and the plan carries a PlanAffectingConvert warning
+-- (the plan-warnings panel). A classic ORM mistake, made on purpose.
+IF COL_LENGTH(N'dbo.Customers', N'Code') IS NULL
+    ALTER TABLE dbo.Customers ADD Code varchar(20) NULL;
+GO
+UPDATE dbo.Customers SET Code = CONCAT('C', RIGHT(CONCAT('0000', Id), 5)) WHERE Code IS NULL;
+IF INDEXPROPERTY(OBJECT_ID(N'dbo.Customers'), N'IX_Customers_Code', N'IndexID') IS NULL
+    CREATE INDEX IX_Customers_Code ON dbo.Customers (Code);
+GO
+CREATE OR ALTER PROCEDURE dbo.CustomerByCode @code nvarchar(20) AS
+    SELECT c.Id, c.Name, c.Region FROM dbo.Customers AS c WHERE c.Code = @code;
+GO
+
+-- An index nothing reads but every insert into Orders has to maintain (mssql_index_usage).
+IF INDEXPROPERTY(OBJECT_ID(N'dbo.Orders'), N'IX_Orders_PlacedAt', N'IndexID') IS NULL
+    CREATE INDEX IX_Orders_PlacedAt ON dbo.Orders (PlacedAt);
+GO
+
+-- A full backup to the server's default backup directory, so the backup-age panel has one database
+-- that was backed up and the system databases that weren't.
+BACKUP DATABASE ExampleShop TO DISK = N'ExampleShop.bak' WITH INIT, COPY_ONLY;
+GO
+
+-- Backup history lives in msdb, which the exporter reads as a user with only SELECT on it.
+USE msdb;
+GO
+IF USER_ID(N'sql_exporter') IS NULL
+    CREATE USER sql_exporter FOR LOGIN sql_exporter;
+GRANT SELECT ON dbo.backupset TO sql_exporter;
+GO

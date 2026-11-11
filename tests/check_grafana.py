@@ -16,8 +16,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DASHBOARD = ROOT / "stack" / "grafana" / "dashboards" / "sql-server.json"
-# What was running at the instant of a collection: often nothing in a quiet example.
-MAY_BE_EMPTY = {"Running now (query samples)"}
+# Blocking chains come from query samples, taken every 10 seconds: one can miss a 20-second chain.
+MAY_BE_EMPTY = {"Blocking chains"}
 
 
 def call(url, body=None):

@@ -22,6 +22,11 @@ services:
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Example.Sa.Passw0rd}
     ports:
       - "1433:1433"
+    volumes:
+      # SQL Server's directory, for its error log, which the collector reads (otelcol/loki.yaml).
+      # The whole directory, not just log/: it exists in the image owned by SQL Server's user, so
+      # the volume starts with that owner; a new log/ would be root's and SQL Server couldn't write.
+      - mssql:/var/opt/mssql
     mem_limit: 2g
     healthcheck:
       test:
@@ -88,6 +93,7 @@ services:
       - ./otelcol/config.yaml:/etc/otelcol/config.yaml:ro
       - ./otelcol/loki.yaml:/etc/otelcol/loki.yaml:ro
       - ./out:/out
+      - mssql:/mssql:ro
 
   # Prometheus scraping sql_exporter, Loki receiving the collector's events over OTLP, and Grafana
   # with both as data sources and a dashboard: http://localhost:3000 (no login, local use only).
@@ -123,3 +129,6 @@ services:
       - ./stack/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "3000:3000"
+
+volumes:
+  mssql: {}

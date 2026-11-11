@@ -10,6 +10,8 @@
 # Settings come from the environment, so compose.yaml and the Windows job share this file:
 #   SQLSERVER_DATASOURCE  connection URL, as the otel_collector login (sql/setup.sql)
 #   EVENTS_FILE           where the events are written, one OTLP/JSON batch per line
+#
+# Deadlock graphs come from a second receiver, sql_query/deadlocks, as db.server.deadlock events.
 receivers:
   sql_server:
     datasource: ${env:SQLSERVER_DATASOURCE}
@@ -36,8 +38,34 @@ receivers:
       collection_interval: 10s
       top_procedure_count: 50
 
+  # Deadlock graphs. SQL Server's always-on system_health session records every deadlock as an
+  # xml_deadlock_report event in its event files; this reads the ones newer than the last it saw
+  # (tracking_column), so each arrives once. Needs VIEW SERVER STATE.
+  sql_query/deadlocks:
+    driver: sqlserver
+    datasource: ${env:SQLSERVER_DATASOURCE}
+    collection_interval: 10s
+    queries:
+      - sql: |
+          SELECT CONVERT(varchar(27), x.timestamp_utc, 126) AS event_time,
+                 CONVERT(nvarchar(max), x.event_data) AS deadlock_graph
+          FROM sys.fn_xe_file_target_read_file(N'system_health*.xel', NULL, NULL, NULL) AS x
+          WHERE x.object_name = N'xml_deadlock_report'
+            AND CONVERT(varchar(27), x.timestamp_utc, 126) > @p1
+          ORDER BY event_time
+        tracking_column: event_time
+        tracking_start_value: "2000-01-01T00:00:00"
+        logs:
+          - body_column: deadlock_graph
+
 processors:
   batch: {}
+  # sql_query records carry no event name; give the deadlocks one, as the sql_server events have.
+  transform/deadlocks:
+    error_mode: ignore
+    log_statements:
+      - statements:
+          - set(log.event_name, "db.server.deadlock") where log.event_name == ""
 
 exporters:
   file:
@@ -49,6 +77,6 @@ service:
   pipelines:
     # Logs only: sql_exporter already covers the metrics, so the receiver's are left out.
     logs:
-      receivers: [sql_server]
-      processors: [batch]
+      receivers: [sql_server, sql_query/deadlocks]
+      processors: [transform/deadlocks, batch]
       exporters: [file, debug]

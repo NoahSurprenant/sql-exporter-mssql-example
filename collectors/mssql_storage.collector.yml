@@ -1,0 +1,72 @@
+# Space and backups: data and log size per database, how full each log is, tempdb by consumer,
+# and how long ago each database was last backed up.
+#
+# Sizes come from SQL Server's performance counters and tempdb's own space DMV, so VIEW SERVER STATE
+# is enough. Backup history is in msdb: the login needs a user there with SELECT on
+# dbo.backupset (sql/setup.sql).
+collector_name: mssql_storage
+
+# Sizes and backups change slowly.
+min_interval: 60s
+
+metrics:
+  - metric_name: mssql_database_data_bytes
+    type: gauge
+    help: 'Size of the database''s data files.'
+    key_labels: [database]
+    values: [data_bytes]
+    query_ref: mssql_database_size
+  - metric_name: mssql_database_log_bytes
+    type: gauge
+    help: 'Size of the database''s log files.'
+    key_labels: [database]
+    values: [log_bytes]
+    query_ref: mssql_database_size
+  - metric_name: mssql_database_log_used_bytes
+    type: gauge
+    help: 'Log space in use: what a log backup (full recovery) or a checkpoint (simple) has yet to free.'
+    key_labels: [database]
+    values: [log_used_bytes]
+    query_ref: mssql_database_size
+  - metric_name: mssql_tempdb_bytes
+    type: gauge
+    help: 'tempdb space by use: user objects (temp tables), internal objects (sorts, hashes, spools), the version store, and free.'
+    key_labels: [use]
+    values: [bytes]
+    query: |
+      SELECT u.[use], u.pages * 8192.0 AS bytes
+      FROM (
+        SELECT SUM(user_object_reserved_page_count) AS user_objects,
+               SUM(internal_object_reserved_page_count) AS internal_objects,
+               SUM(version_store_reserved_page_count) AS version_store,
+               SUM(unallocated_extent_page_count) AS free
+        FROM tempdb.sys.dm_db_file_space_usage
+      ) AS s
+      UNPIVOT (pages FOR [use] IN (user_objects, internal_objects, version_store, free)) AS u
+  - metric_name: mssql_last_backup_age_seconds
+    type: gauge
+    help: 'Seconds since the last backup of each type finished; -1 when there has never been one.'
+    key_labels: [database, type]
+    values: [age_seconds]
+    query: |
+      SELECT d.name AS [database], t.type_desc AS [type],
+        COALESCE(DATEDIFF(second, MAX(b.backup_finish_date), GETDATE()), -1) AS age_seconds
+      FROM sys.databases AS d
+      CROSS JOIN (VALUES ('D', 'full'), ('I', 'differential'), ('L', 'log')) AS t(code, type_desc)
+      LEFT JOIN msdb.dbo.backupset AS b ON b.database_name = d.name AND b.type = t.code
+      -- A log backup only exists outside simple recovery.
+      WHERE d.name <> N'tempdb' AND (t.code <> 'L' OR d.recovery_model_desc <> N'SIMPLE')
+      GROUP BY d.name, t.type_desc
+
+queries:
+  - query_name: mssql_database_size
+    query: |
+      SELECT RTRIM(instance_name) AS [database],
+        SUM(CASE WHEN counter_name = 'Data File(s) Size (KB)' THEN cntr_value END) * 1024.0 AS data_bytes,
+        SUM(CASE WHEN counter_name = 'Log File(s) Size (KB)' THEN cntr_value END) * 1024.0 AS log_bytes,
+        SUM(CASE WHEN counter_name = 'Log File(s) Used Size (KB)' THEN cntr_value END) * 1024.0 AS log_used_bytes
+      FROM sys.dm_os_performance_counters
+      WHERE object_name LIKE '%:Databases%'
+        AND counter_name IN ('Data File(s) Size (KB)', 'Log File(s) Size (KB)', 'Log File(s) Used Size (KB)')
+        AND instance_name NOT IN ('_Total', 'mssqlsystemresource')
+      GROUP BY RTRIM(instance_name)

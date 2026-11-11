@@ -1,0 +1,55 @@
+# Indexes that cost writes and serve no reads: every insert, update and delete maintains them, but
+# no query has sought, scanned or looked anything up through them since SQL Server started
+# (sys.dm_db_index_usage_stats). The counterpart of mssql_missing_indexes. Primary keys and unique
+# indexes are left out: they enforce constraints whether or not anything reads them.
+#
+# Index names live in each database's own catalog, so the query visits every online user database
+# in turn (dynamic SQL). Needs VIEW SERVER STATE, VIEW ANY DEFINITION and CONNECT ANY DATABASE.
+#
+# Cardinality is bounded: the top 20 per database by writes. The usage DMV is emptied on restart,
+# so judge "unused" over a server uptime that covers the whole business cycle (month end included).
+collector_name: mssql_index_usage
+
+min_interval: 60s
+
+metrics:
+  - metric_name: mssql_unused_index_writes_total
+    type: counter
+    help: 'Writes to an index that no query has read since SQL Server started (top 20 per database by writes).'
+    key_labels: [database, table, index]
+    values: [writes]
+    query_ref: mssql_unused_indexes
+  - metric_name: mssql_unused_index_bytes
+    type: gauge
+    help: 'Size of an unused index.'
+    key_labels: [database, table, index]
+    values: [bytes]
+    query_ref: mssql_unused_indexes
+
+queries:
+  - query_name: mssql_unused_indexes
+    query: |
+      DECLARE @sql nvarchar(max);
+      SELECT @sql = STRING_AGG(CONVERT(nvarchar(max), N'
+        SELECT * FROM (
+          SELECT TOP (20) N' + QUOTENAME(name, '''') + N' AS [database],
+            OBJECT_SCHEMA_NAME(i.object_id, ' + CONVERT(nvarchar(10), database_id) + N') + N''.'' + o.name AS [table],
+            i.name AS [index],
+            u.user_updates AS writes,
+            (SELECT SUM(p.used_page_count) FROM ' + QUOTENAME(name) + N'.sys.dm_db_partition_stats AS p
+             WHERE p.object_id = i.object_id AND p.index_id = i.index_id) * 8192.0 AS bytes
+          FROM ' + QUOTENAME(name) + N'.sys.indexes AS i
+          JOIN ' + QUOTENAME(name) + N'.sys.objects AS o ON o.object_id = i.object_id
+          JOIN sys.dm_db_index_usage_stats AS u
+            ON u.database_id = ' + CONVERT(nvarchar(10), database_id) + N' AND u.object_id = i.object_id AND u.index_id = i.index_id
+          WHERE o.is_ms_shipped = 0 AND i.index_id > 1 AND i.is_primary_key = 0 AND i.is_unique = 0
+            AND u.user_seeks + u.user_scans + u.user_lookups = 0 AND u.user_updates > 0
+          ORDER BY u.user_updates DESC) AS t'), N' UNION ALL ')
+      FROM sys.databases
+      WHERE database_id > 4 AND state_desc = N'ONLINE' AND HAS_DBACCESS(name) = 1;
+      IF @sql IS NULL
+        SELECT CAST(NULL AS sysname) AS [database], CAST(NULL AS nvarchar(300)) AS [table],
+               CAST(NULL AS sysname) AS [index], CAST(0 AS bigint) AS writes, CAST(0 AS float) AS bytes
+        WHERE 1 = 0;
+      ELSE
+        EXEC sp_executesql @sql;

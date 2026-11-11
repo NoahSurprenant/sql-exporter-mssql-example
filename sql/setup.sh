@@ -12,6 +12,12 @@ done
 # -C trusts the server's self-signed certificate; mssql-tools18 encrypts by default.
 run() { "$sqlcmd" -S mssql -U sa -P "$MSSQL_SA_PASSWORD" -C "$@"; }
 
+# `setup.sh contention` runs the blocking chain and deadlock (sql/contention) instead.
+if [ "${1:-}" = contention ]; then
+  export sqlcmd
+  exec /sql/contention/run.sh mssql
+fi
+
 # `setup.sh workload` reruns only the workload, which the OpenTelemetry check needs: the receiver
 # reports what changed between two of its collections.
 if [ "${1:-}" != workload ]; then

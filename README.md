@@ -17,8 +17,10 @@ SQL Server :1433  <──  sql_exporter :9399/metrics  <──  Prometheus / Ope
 ```
 
 It does not need to run on the database server: anything that can reach port 1433 and log in will
-do. This example logs in as a dedicated `sql_exporter` login with only `VIEW SERVER STATE` and
-`VIEW ANY DEFINITION`, and no user in any database (see [`sql/setup.sql`](sql/setup.sql)).
+do. This example logs in as a dedicated `sql_exporter` login with `VIEW SERVER STATE`,
+`VIEW ANY DEFINITION` and `CONNECT ANY DATABASE` (to name objects inside the databases, without
+reading any table), plus a user in `msdb` with `SELECT` on `dbo.backupset` for backup history
+(see [`sql/setup.sql`](sql/setup.sql)). `sql_exporter.yml` runs every collector file (`mssql_*`).
 
 | Collector | Source | What it reports |
 | --- | --- | --- |
@@ -26,6 +28,13 @@ do. This example logs in as a dedicated `sql_exporter` login with only `VIEW SER
 | [`mssql_query_stats`](collectors/mssql_query_stats.collector.yml) | Written for this example | The plan cache's top 20 statements per database (executions, elapsed and CPU time, logical and physical reads, rows, slowest run), and the top 25 wait types |
 | [`mssql_procedure_stats`](collectors/mssql_procedure_stats.collector.yml) | Written for this example | The top 20 stored procedures per database by elapsed time (executions, elapsed and CPU time, logical and physical reads, slowest run), named `schema.procedure` |
 | [`mssql_missing_indexes`](collectors/mssql_missing_indexes.collector.yml) | Written for this example | The optimizer's top 10 missing-index suggestions per database (table, equality / inequality / included columns, estimated improvement, impact %, seeks and scans it would have served), and a count of all suggestions per database |
+| [`mssql_index_usage`](collectors/mssql_index_usage.collector.yml) | Written for this example | Unused indexes: maintained by every write but read by no query since SQL Server started, top 20 per database, with their size |
+| [`mssql_activity`](collectors/mssql_activity.collector.yml) | Written for this example | Right now: user requests by state, blocked requests, the longest blocked wait, head blockers, the longest-running request, SQL Server's CPU |
+| [`mssql_storage`](collectors/mssql_storage.collector.yml) | Written for this example | Data and log size and log space used per database, tempdb by use, time since each database's last full / differential / log backup |
+| [`mssql_io_files`](collectors/mssql_io_files.collector.yml) | Written for this example | Reads, writes and their stall per database and file type, for read and write latency |
+
+`mssql_standard`'s buffer cache hit ratio is the raw counter without its base, so it isn't a
+ratio; the dashboard leaves it out.
 
 ## Query plans and procedure detail: the OpenTelemetry Collector
 
@@ -41,6 +50,12 @@ Metrics can't carry a query's full text or its execution plan. For those, the st
 | `db.server.top_procedure` | The most expensive stored procedures since the last collection |
 | `db.server.procedure_definition` | The source of each of those procedures |
 | `db.server.query_sample` | What is executing at the moment of collection, with blocking |
+| `db.server.deadlock` | Every deadlock graph, from SQL Server's always-on `system_health` session (a second receiver, `sql_query/deadlocks`) |
+| `db.server.errorlog` | SQL Server's own error log (Linux compose stack only: read from the container's log directory, [`otelcol/loki.yaml`](otelcol/loki.yaml)) |
+
+On the way to Loki ([`otelcol/loki.yaml`](otelcol/loki.yaml)) each plan also gets its estimated
+cost, degree of parallelism and warnings pulled out of the XML: implicit conversions, key lookups,
+scans, spills to tempdb, missing indexes, joins with no predicate.
 
 The procedure events need SQL Server 2017 CU3 or later (`sys.dm_exec_procedure_stats.total_spills`):
 on 2017 RTM the receiver logs `Invalid column name 'total_spills'` and reports none, which is why the
@@ -59,10 +74,10 @@ logs signal is at
 **https://noahsurprenant.github.io/sql-exporter-mssql-example/** is the Grafana dashboard from the
 latest CI run on `main` (SQL Server 2022), with no server behind it:
 
-- CI builds a Grafana snapshot of the dashboard ([`pages/snapshot.py`](pages/snapshot.py)): every
-  panel's data stored in it, and a fixed time range, the window the run collected in.
-- A browser opens the snapshot and records the handful of API calls Grafana makes to show it
-  ([`pages/record.py`](pages/record.py)).
+- CI collects for 15 minutes, then a browser publishes a snapshot of the dashboard through
+  Grafana's own share drawer: every panel's data, as the panel received it, over that fixed window.
+  It then opens the snapshot as a visitor and records the handful of API calls Grafana makes to
+  show it ([`pages/record.py`](pages/record.py)).
 - The site is Grafana's own web app (its `public/` files), the recording, and a service worker
   ([`pages/sw.js`](pages/sw.js)) that answers those calls from it. The first visit installs the
   worker and reloads.
@@ -77,16 +92,30 @@ Grafana stopped ([`pages/check_site.py`](pages/check_site.py)) before publishing
 
 Needs Docker with Compose.
 
-Once it is up, open **http://localhost:3000**: Grafana, no login, with the **SQL Server example** dashboard.
-Its top half is sql_exporter's metrics from Prometheus (throughput, connections, top statements,
-top procedures, missing-index suggestions, waits); its bottom half the collector's events from Loki
-(top queries, execution plans, procedures and their definitions, running queries). The events need
-the workload to run twice, a collection apart: `docker compose run --rm setup workload`, or the
-`check_events.py` line below, which does it. Prometheus is on :9090 and Loki on :3100.
+Once it is up, open **http://localhost:3000**: Grafana, no login, with the **SQL Server example**
+dashboard (Prometheus is on :9090, Loki on :3100). The events need the workload to run twice, a
+collection apart: `docker compose run --rm setup workload`, or the `check_events.py` line below,
+which does it. `docker compose run --rm setup contention` makes something to see in the blocking
+panels: a 20-second blocking chain, a deadlock and a failed login
+([`sql/contention`](sql/contention)).
+
+| Row | Panels |
+| --- | --- |
+| Overview | Whether the exporter reaches SQL Server, SQL Server's CPU, blocked requests, deadlocks and user errors in the range, page life expectancy; batch requests, requests by state, connections |
+| Blocking and deadlocks | Blocked requests, head blockers and the longest wait over time; the longest-running request; blocking chains (session, blocked by, wait, resource, statement); deadlock graphs |
+| Statements and procedures | Top statements and procedures **in the time range**: executions, total and average elapsed, average CPU and reads per execution; top waits |
+| Query plans | Plan warnings per query (cost, parallelism, implicit conversion, key lookup, scan, spill, missing index, join with no predicate); the plan XML; procedure definitions |
+| Indexes | Missing-index suggestions; unused indexes |
+| Storage, I/O and backups | Database and log sizes, read and write latency per file, tempdb, time since the last backup, log growths |
+| Error log | Failed logins; SQL Server's error log (Linux compose stack) |
+
+The dashboard JSON is generated: change [`stack/grafana/dashboard.mjs`](stack/grafana/dashboard.mjs)
+and run `node stack/grafana/dashboard.mjs`.
 
 ```sh
 docker compose up -d                        # SQL Server 2022; MSSQL_VERSION=2017, 2019 or 2025 for others
 # With MSSQL_VERSION=2017 also set EXPORTER_GODEBUG=x509negativeserial=1 (see compose.yaml)
+docker compose run --rm setup contention    # blocking, a deadlock and a failed login
 python3 tests/check_metrics.py              # every collector query returned data
 curl -s localhost:9399/metrics | grep '^mssql_query_executions_total'
 # Reruns the workload until the collector has reported the query, plan and procedure events
@@ -108,6 +137,7 @@ installation and the exporter's Windows binary from its
 ```powershell
 sqlcmd -S localhost -U sa -P <sa password> -C -b -i sql/setup.sql -v EXPORTER_PASSWORD=<password>
 sqlcmd -S localhost -U sa -P <sa password> -C -i sql/workload.sql
+$env:MSSQL_SA_PASSWORD = "<sa password>"; ./sql/contention/run.ps1
 .\sql_exporter.exe --config.file=sql_exporter.yml `
   --config.data-source-name="sqlserver://sql_exporter:<password>@localhost:1433?encrypt=true&trustservercertificate=true"
 python tests/check_metrics.py
