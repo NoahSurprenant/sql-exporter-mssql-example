@@ -47,6 +47,8 @@ jobs:
         version: ["2017", "2019", "2022", "2025"]
     env:
       MSSQL_VERSION: ${{ matrix.version }}
+      # See compose.yaml: 2017 images can generate a certificate Go refuses.
+      EXPORTER_GODEBUG: ${{ matrix.version == '2017' && 'x509negativeserial=1' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

@@ -31,6 +31,7 @@ Needs Docker with Compose.
 
 ```sh
 docker compose up -d                        # SQL Server 2022; MSSQL_VERSION=2017, 2019 or 2025 for others
+# With MSSQL_VERSION=2017 also set EXPORTER_GODEBUG=x509negativeserial=1 (see compose.yaml)
 python3 tests/check_metrics.py              # every collector query returned data
 curl -s localhost:9399/metrics | grep '^mssql_query_executions_total'
 docker compose down

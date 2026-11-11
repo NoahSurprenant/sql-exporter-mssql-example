@@ -53,5 +53,10 @@ services:
     volumes:
       - ./sql_exporter.yml:/etc/sql_exporter/sql_exporter.yml:ro
       - ./collectors:/etc/sql_exporter/collectors:ro
+    environment:
+      # SQL Server 2017 on Linux sometimes generates its self-signed certificate with a negative serial
+      # number, which Go (1.23 on) refuses: "x509: negative serial number", and `up` stays 0.
+      # EXPORTER_GODEBUG=x509negativeserial=1 accepts it; better is to give the server a real certificate.
+      GODEBUG: ${EXPORTER_GODEBUG:-}
     ports:
       - "9399:9399"
