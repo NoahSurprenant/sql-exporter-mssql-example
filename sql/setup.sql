@@ -4,13 +4,29 @@
 -- Creates the exporter's own login and a small example database for the workload to use.
 
 -- The exporter's login: server-level read access to the DMVs and catalog metadata, and no user in
--- any database. These are the two permissions mssql_standard documents; mssql_query_stats needs
--- only VIEW SERVER STATE.
+-- any database. VIEW SERVER STATE and VIEW ANY DEFINITION are what mssql_standard documents;
+-- mssql_query_stats and mssql_missing_indexes need only VIEW SERVER STATE.
 IF SUSER_ID(N'sql_exporter') IS NULL
     CREATE LOGIN sql_exporter WITH PASSWORD = N'$(EXPORTER_PASSWORD)', CHECK_POLICY = OFF;
 GO
 GRANT VIEW SERVER STATE TO sql_exporter;
 GRANT VIEW ANY DEFINITION TO sql_exporter;
+-- Names of objects inside the databases (mssql_procedure_stats): VIEW ANY DEFINITION alone makes
+-- them visible but doesn't let the login into a database it has no user in, so OBJECT_NAME()
+-- returns NULL. CONNECT ANY DATABASE lets it in, still without reading any table's data.
+GRANT CONNECT ANY DATABASE TO sql_exporter;
+GO
+
+-- The OpenTelemetry Collector's login (sql_server receiver), the same password for simplicity. The
+-- receiver also needs VIEW ANY DATABASE (granted to public by default, made explicit here), and
+-- VIEW ANY DEFINITION and CONNECT ANY DATABASE to name procedures in db.server.top_procedure.
+IF SUSER_ID(N'otel_collector') IS NULL
+    CREATE LOGIN otel_collector WITH PASSWORD = N'$(EXPORTER_PASSWORD)', CHECK_POLICY = OFF;
+GO
+GRANT VIEW SERVER STATE TO otel_collector;
+GRANT VIEW ANY DEFINITION TO otel_collector;
+GRANT VIEW ANY DATABASE TO otel_collector;
+GRANT CONNECT ANY DATABASE TO otel_collector;
 GO
 
 IF DB_ID(N'ExampleShop') IS NULL

@@ -2,10 +2,10 @@
 # procedure runs, how long it takes, its CPU and its reads. The procedure-level counterpart of
 # mssql_query_stats, which reports the statements inside them one by one.
 #
-# Needs VIEW SERVER STATE, plus VIEW ANY DEFINITION for the procedure's name: without it the label
-# falls back to "object_id <n>". The counters are cumulative since the procedure's plan was cached:
-# a restart, a recompile or the plan being evicted resets them, which rate() treats as a counter
-# reset.
+# Needs VIEW SERVER STATE, plus VIEW ANY DEFINITION and CONNECT ANY DATABASE for the procedure's
+# name: without them the label falls back to "object_id <n>". The counters are cumulative since the
+# procedure's plan was cached: a restart, a recompile or the plan being evicted resets them, which
+# rate() treats as a counter reset.
 #
 # Cardinality is bounded: the top 20 procedures per database by total elapsed time. Labels:
 # database and procedure (schema.name).
@@ -66,8 +66,9 @@ queries:
           SUM(ps.total_physical_reads) AS physical_reads,
           MAX(ps.max_elapsed_time) / 1e6 AS max_elapsed_seconds
         FROM sys.dm_exec_procedure_stats AS ps
-        -- Above 4 leaves out master, tempdb, model and msdb.
-        WHERE ps.database_id > 4
+        -- Above 4 leaves out master, tempdb, model and msdb; 32767 is the hidden resource database,
+        -- where system procedures such as sp_executesql live.
+        WHERE ps.database_id > 4 AND ps.database_id <> 32767
         GROUP BY ps.database_id, ps.object_id
       ), ranked AS (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY database_id ORDER BY elapsed_seconds DESC) AS rn

@@ -12,7 +12,11 @@ done
 # -C trusts the server's self-signed certificate; mssql-tools18 encrypts by default.
 run() { "$sqlcmd" -S mssql -U sa -P "$MSSQL_SA_PASSWORD" -C "$@"; }
 
-run -b -i /sql/setup.sql -v EXPORTER_PASSWORD="$EXPORTER_PASSWORD"
+# `setup.sh workload` reruns only the workload, which the OpenTelemetry check needs: the receiver
+# reports what changed between two of its collections.
+if [ "${1:-}" != workload ]; then
+  run -b -i /sql/setup.sql -v EXPORTER_PASSWORD="$EXPORTER_PASSWORD"
+fi
 # Not -b: the workload ends with a deliberate error.
 run -i /sql/workload.sql > /dev/null
-echo "setup and workload done"
+echo "${1:-setup and workload} done"

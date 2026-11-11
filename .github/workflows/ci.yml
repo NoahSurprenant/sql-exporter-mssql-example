@@ -21,6 +21,8 @@ env:
   MSSQL_SA_PASSWORD: Example.Sa.Passw0rd
   EXPORTER_PASSWORD: Example.Exporter.Passw0rd
   SQL_EXPORTER_VERSION: 0.24.13
+  # The Windows job's collector binary; compose.yaml pins the same version's image.
+  OTELCOL_VERSION: 0.165.0
 
 jobs:
   # mssql_standard is upstream's example collector, kept byte-for-byte: it ships in neither the
@@ -57,6 +59,10 @@ jobs:
 
       - name: Check every collector query
         run: python3 tests/check_metrics.py
+
+      # sudo: the collector container writes out/ as root.
+      - name: Check the OpenTelemetry events
+        run: sudo -E python3 tests/check_events.py --events out/events.jsonl --workload "docker compose run --rm -T setup workload"
 
       - name: Server version
         if: always()
@@ -137,6 +143,35 @@ jobs:
             Get-Content "$env:RUNNER_TEMP/sql_exporter.log" -ErrorAction SilentlyContinue
           }
 
+      - name: Run the OpenTelemetry Collector for Windows and check its events
+        if: matrix.exporter == 'windows'
+        shell: pwsh
+        run: |
+          $v = $env:OTELCOL_VERSION
+          $tarball = "otelcol-contrib_${v}_windows_amd64.tar.gz"
+          $base = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v$v"
+          Invoke-WebRequest "$base/$tarball" -OutFile "$env:RUNNER_TEMP/$tarball"
+          Invoke-WebRequest "$base/$tarball.sha256" -OutFile "$env:RUNNER_TEMP/$tarball.sha256"
+          $expected = ((Get-Content "$env:RUNNER_TEMP/$tarball.sha256" -Raw).Trim() -split '\s+')[0]
+          $actual = (Get-FileHash "$env:RUNNER_TEMP/$tarball" -Algorithm SHA256).Hash
+          if (-not $expected -or $actual -ne $expected.ToUpper()) { throw "checksum mismatch: $actual vs $expected" }
+          New-Item -ItemType Directory "$env:RUNNER_TEMP/otelcol" | Out-Null
+          tar -xzf "$env:RUNNER_TEMP/$tarball" -C "$env:RUNNER_TEMP/otelcol"
+          $exe = (Get-ChildItem "$env:RUNNER_TEMP/otelcol" -Recurse -Filter otelcol-contrib.exe | Select-Object -First 1).FullName
+
+          $env:SQLSERVER_DATASOURCE = "sqlserver://otel_collector:$($env:EXPORTER_PASSWORD)@localhost:1433?encrypt=true&trustservercertificate=true"
+          $env:EVENTS_FILE = "$env:RUNNER_TEMP/events.jsonl"
+          $collector = Start-Process $exe -PassThru -NoNewWindow -ArgumentList "--config=otelcol/config.yaml" `
+            -RedirectStandardError "$env:RUNNER_TEMP/otelcol.log"
+          try {
+            python tests/check_events.py --events $env:EVENTS_FILE `
+              --workload "sqlcmd -S localhost -U sa -P ${{ env.MSSQL_SA_PASSWORD }} -C -i sql/workload.sql"
+            if ($LASTEXITCODE -ne 0) { throw "event check failed" }
+          } finally {
+            Stop-Process -Id $collector.Id -ErrorAction SilentlyContinue
+            Get-Content "$env:RUNNER_TEMP/otelcol.log" -Tail 50 -ErrorAction SilentlyContinue
+          }
+
       - name: Install WSL 2 with Ubuntu
         if: matrix.exporter == 'wsl2'
         uses: Vampire/setup-wsl@4c48163d9f981914dd8caa0fc335fe19cca5bff4 # v7.2.0
@@ -154,7 +189,7 @@ jobs:
 
       # One step, so Docker, the exporter and the check share a WSL session: WSL can stop the VM once
       # nothing is attached to it. Workflow env is not passed into WSL, hence the expressions.
-      - name: Run the sql_exporter container on Docker in WSL 2 and check every collector query
+      - name: Run sql_exporter and the OpenTelemetry Collector on Docker in WSL 2 and check them
         if: matrix.exporter == 'wsl2'
         shell: wsl-bash {0}
         run: |
@@ -181,3 +216,16 @@ jobs:
             "--config.data-source-name=sqlserver://sql_exporter:${{ env.EXPORTER_PASSWORD }}@$host:1433?encrypt=true&trustservercertificate=true"
           trap 'docker logs sql-exporter; docker rm -f sql-exporter > /dev/null' EXIT
           python3 tests/check_metrics.py
+
+          # The collector container too, the same image as compose.yaml. The workload reruns through
+          # the Windows sqlcmd (WSL interop), against the Windows SQL Server.
+          collector_image=$(grep -oE 'otel/opentelemetry-collector-contrib:[^ ]+' compose.yaml | tr -d '\r')
+          mkdir -p /tmp/out
+          docker run -d --name otel-collector -v /tmp/out:/out --user 0:0 \
+            -v "$PWD/otelcol/config.yaml:/etc/otelcol/config.yaml:ro" \
+            -e "SQLSERVER_DATASOURCE=sqlserver://otel_collector:${{ env.EXPORTER_PASSWORD }}@$host:1433?encrypt=true&trustservercertificate=true" \
+            -e EVENTS_FILE=/out/events.jsonl \
+            "$collector_image" --config=/etc/otelcol/config.yaml
+          trap 'docker logs sql-exporter; docker logs --tail 50 otel-collector; docker rm -f sql-exporter otel-collector > /dev/null' EXIT
+          python3 tests/check_events.py --events /tmp/out/events.jsonl \
+            --workload "sqlcmd.exe -S localhost -U sa -P '${{ env.MSSQL_SA_PASSWORD }}' -C -i '$(wslpath -w sql/workload.sql)'"

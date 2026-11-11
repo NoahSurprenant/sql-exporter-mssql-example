@@ -1,7 +1,10 @@
-# SQL Server on Linux, a one-shot setup container, and sql_exporter on :9399.
+# SQL Server on Linux, a one-shot setup container, sql_exporter on :9399 (metrics), and an
+# OpenTelemetry Collector writing SQL Server events (queries, plans, procedures) to ./out.
 #
 #   docker compose up -d
 #   curl -s localhost:9399/metrics | grep ^mssql_
+#   docker compose run --rm setup workload     # again, then wait ~20s: events need two collections
+#   tail -c 2000 out/events.jsonl
 #
 # MSSQL_VERSION picks the SQL Server image: 2017, 2019, 2022 (default) or 2025.
 # The passwords are examples for a throwaway local container; change them for anything else.
@@ -56,7 +59,27 @@ services:
     environment:
       # SQL Server 2017 on Linux sometimes generates its self-signed certificate with a negative serial
       # number, which Go (1.23 on) refuses: "x509: negative serial number", and `up` stays 0.
-      # EXPORTER_GODEBUG=x509negativeserial=1 accepts it; better is to give the server a real certificate.
+      # EXPORTER_GODEBUG=x509negativeserial=1 accepts it (the collector gets the same setting); better is to
+      # give the server a real certificate.
       GODEBUG: ${EXPORTER_GODEBUG:-}
     ports:
       - "9399:9399"
+
+  # The OpenTelemetry Collector's sql_server receiver (otelcol/config.yaml): top queries, their plans,
+  # top procedures and their definitions, as log events written to ./out/events.jsonl.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.165.0@sha256:e40d61f10c9a617cca1ffd1be4d7e2b3a4b0f0001798ff07e58cabe82e618cea
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    command: ["--config=/etc/otelcol/config.yaml"]
+    # Root only so the file exporter can write to the bind-mounted ./out whatever its owner; the
+    # collector itself needs no privileges.
+    user: "0:0"
+    environment:
+      SQLSERVER_DATASOURCE: sqlserver://otel_collector:${EXPORTER_PASSWORD:-Example.Exporter.Passw0rd}@mssql:1433?encrypt=true&trustservercertificate=true
+      EVENTS_FILE: /out/events.jsonl
+      GODEBUG: ${EXPORTER_GODEBUG:-}
+    volumes:
+      - ./otelcol/config.yaml:/etc/otelcol/config.yaml:ro
+      - ./out:/out

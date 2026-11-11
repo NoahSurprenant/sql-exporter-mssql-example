@@ -1,0 +1,54 @@
+# OpenTelemetry Collector (contrib) with the sql_server receiver: the expensive queries and stored
+# procedures, their execution plans and definitions, and what is running right now, as log events.
+# The detail sql_exporter's metrics can't carry (full query text, plan XML) goes here; in a real
+# deployment the logs pipeline would export to Loki or another log store instead of a file.
+#
+# Like sql_exporter, the receiver pulls: it logs in to SQL Server and queries its DMVs on a timer.
+# It reports deltas: the first collection only records a baseline, so a query or procedure appears
+# from the second collection on, if it ran again in between.
+#
+# Settings come from the environment, so compose.yaml and the Windows job share this file:
+#   SQLSERVER_DATASOURCE  connection URL, as the otel_collector login (sql/setup.sql)
+#   EVENTS_FILE           where the events are written, one OTLP/JSON batch per line
+receivers:
+  sql_server:
+    datasource: ${env:SQLSERVER_DATASOURCE}
+    # Short for the example, so the test sees events quickly; the defaults are 10s and 60s.
+    collection_interval: 10s
+    events:
+      db.server.top_query:
+        enabled: true
+      # The plan on its own record (joined back by sqlserver.query_hash + sqlserver.query_plan_hash),
+      # so an oversized plan can't drop the query statistics with it.
+      db.server.query_plan:
+        enabled: true
+      db.server.top_procedure:
+        enabled: true
+      db.server.procedure_definition:
+        enabled: true
+      db.server.query_sample:
+        enabled: true
+    top_query_collection:
+      collection_interval: 10s
+      lookback_time: 120s
+      top_query_count: 50
+    top_procedure_collection:
+      collection_interval: 10s
+      top_procedure_count: 50
+
+processors:
+  batch: {}
+
+exporters:
+  file:
+    path: ${env:EVENTS_FILE}
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    # Logs only: sql_exporter already covers the metrics, so the receiver's are left out.
+    logs:
+      receivers: [sql_server]
+      processors: [batch]
+      exporters: [file, debug]
