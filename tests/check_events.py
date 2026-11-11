@@ -105,7 +105,8 @@ def main():
         print("\nFAILED:\n  " + "\n  ".join(failures))
         sys.exit(1)
     plan = next(a for n, a in events if n == "db.server.query_plan" and a.get("db.namespace") == "ExampleShop")
-    print(f"\nOK: query, plan ({len(str(plan['sqlserver.query_plan']))} characters of XML), procedure and definition events")
+    checked = "query and plan events (procedures skipped)" if args.no_procedures else "query, plan, procedure and definition events"
+    print(f"\nOK: {checked}; the plan is {len(str(plan['sqlserver.query_plan']))} characters of XML")
 
 
 if __name__ == "__main__":
