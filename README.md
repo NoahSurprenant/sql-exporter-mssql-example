@@ -19,7 +19,8 @@ SQL Server :1433  <──  sql_exporter :9399/metrics  <──  Prometheus / Ope
 It does not need to run on the database server: anything that can reach port 1433 and log in will
 do. This example logs in as a dedicated `sql_exporter` login with `VIEW SERVER STATE`,
 `VIEW ANY DEFINITION` and `CONNECT ANY DATABASE` (to name objects inside the databases, without
-reading any table), plus a user in `msdb` with `SELECT` on `dbo.backupset` for backup history
+reading any table), plus a user in `msdb` with `SELECT` on `dbo.backupset`, `dbo.sysjobs` and
+`dbo.sysjobhistory` for backup and SQL Server Agent history
 (see [`sql/setup.sql`](sql/setup.sql)). `sql_exporter.yml` runs every collector file (`mssql_*`).
 
 | Collector | Source | What it reports |
@@ -32,6 +33,8 @@ reading any table), plus a user in `msdb` with `SELECT` on `dbo.backupset` for b
 | [`mssql_activity`](collectors/mssql_activity.collector.yml) | Written for this example | Right now: user requests by state, blocked requests, the longest blocked wait, head blockers, the longest-running request, SQL Server's CPU |
 | [`mssql_storage`](collectors/mssql_storage.collector.yml) | Written for this example | Data and log size and log space used per database, tempdb by use, time since each database's last full / differential / log backup |
 | [`mssql_io_files`](collectors/mssql_io_files.collector.yml) | Written for this example | Reads, writes and their stall per database and file type, for read and write latency |
+| [`mssql_agent`](collectors/mssql_agent.collector.yml) | Written for this example | Whether SQL Server Agent is running; per job, whether it is enabled, its last outcome, how long ago and how long it last ran, and its failed runs |
+| [`mssql_query_store`](collectors/mssql_query_store.collector.yml) | Written for this example | From Query Store, in every database that has it on: queries that ran with more than one plan, and each plan's executions and average duration, which shows plan regressions |
 
 `mssql_standard`'s buffer cache hit ratio is the raw counter without its base, so it isn't a
 ratio; the dashboard leaves it out.
@@ -105,8 +108,10 @@ panels: a 20-second blocking chain, a deadlock and a failed login
 | Blocking and deadlocks | Blocked requests, head blockers and the longest wait over time; the longest-running request; blocking chains (session, blocked by, wait, resource, statement); deadlock graphs |
 | Statements and procedures | Top statements and procedures **in the time range**: executions, total and average elapsed, average CPU and reads per execution; top waits |
 | Query plans | Plan warnings per query (cost, parallelism, implicit conversion, key lookup, scan, spill, missing index, join with no predicate); the plan XML; procedure definitions |
+| Plan regressions | Queries with several plans and how much slower the slowest is than the fastest (force the fast one with `sp_query_store_force_plan`); each plan |
 | Indexes | Missing-index suggestions; unused indexes |
 | Storage, I/O and backups | Database and log sizes, read and write latency per file, tempdb, time since the last backup, log growths |
+| SQL Server Agent jobs | Whether Agent is running, failing jobs, every job's last outcome, last run, duration and failed runs |
 | Error log | Failed logins; SQL Server's error log (Linux compose stack) |
 
 The dashboard JSON is generated: change [`stack/grafana/dashboard.mjs`](stack/grafana/dashboard.mjs)
@@ -124,9 +129,12 @@ python3 tests/check_grafana.py              # every dashboard panel returns data
 docker compose down
 ```
 
-The `setup` container creates the exporter login and an `ExampleShop` database, then runs
-[`sql/workload.sql`](sql/workload.sql), a few hundred parameterized queries and one deliberate
-error, so the query statistics have something to show. sql_exporter starts once that finishes.
+The `setup` container creates the exporter login and an `ExampleShop` database with Query Store
+on, two SQL Server Agent jobs ([`sql/agent.sql`](sql/agent.sql): one succeeds, one fails, both every
+minute; the compose stack turns Agent on), then runs
+[`sql/workload.sql`](sql/workload.sql), a few hundred parameterized queries, one deliberate
+error, and a stored procedure compiled once for each of two very different parameter values, the
+second plan much slower for the common value: a plan regression for Query Store to show. sql_exporter starts once that finishes.
 
 ## Run it on Windows
 
@@ -136,6 +144,8 @@ installation and the exporter's Windows binary from its
 
 ```powershell
 sqlcmd -S localhost -U sa -P <sa password> -C -b -i sql/setup.sql -v EXPORTER_PASSWORD=<password>
+Start-Service SQLSERVERAGENT                # Agent, for the example jobs
+sqlcmd -S localhost -U sa -P <sa password> -C -i sql/agent.sql
 sqlcmd -S localhost -U sa -P <sa password> -C -i sql/workload.sql
 $env:MSSQL_SA_PASSWORD = "<sa password>"; ./sql/contention/run.ps1
 .\sql_exporter.exe --config.file=sql_exporter.yml `

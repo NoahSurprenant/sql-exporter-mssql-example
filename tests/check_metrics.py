@@ -116,6 +116,18 @@ def main():
     if not any(v >= 0 for v in values("mssql_last_backup_age_seconds", r'database="ExampleShop".*type="full"')):
         failures.append("mssql_last_backup_age_seconds shows no full backup of ExampleShop")
 
+    # SQL Server Agent runs the two example jobs (sql/agent.sql): one succeeds, one fails.
+    if values("mssql_agent_up") != [1.0]:
+        failures.append(f"mssql_agent_up is {values('mssql_agent_up')}: SQL Server Agent isn't running")
+    if values("mssql_agent_job_last_outcome", r'job_name="ExampleShop - refresh totals"') != [1.0]:
+        failures.append("the refresh totals job's last run didn't succeed")
+    if values("mssql_agent_job_last_outcome", r'job_name="ExampleShop - import feed"') != [0.0]:
+        failures.append("the import feed job's last run didn't fail, as it should")
+
+    # The workload compiles ShipmentsByStatus both ways: one query, two plans in Query Store.
+    if len(values("mssql_query_store_plan_avg_duration_seconds", r'database="ExampleShop".*query="[^"]*dbo\.Shipments')) < 2:
+        failures.append("Query Store shows fewer than two plans for the Shipments query")
+
     # sql/contention makes a deadlock.
     if not any(v >= 1 for v in values("mssql_deadlocks")):
         failures.append("mssql_deadlocks is 0: run sql/contention before this check")

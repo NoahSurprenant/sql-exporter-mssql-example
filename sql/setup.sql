@@ -109,10 +109,50 @@ GO
 BACKUP DATABASE ExampleShop TO DISK = N'ExampleShop.bak' WITH INIT, COPY_ONLY;
 GO
 
--- Backup history lives in msdb, which the exporter reads as a user with only SELECT on it.
+-- Query Store, for the plan-regression panel (mssql_query_store): every query's plans and how each
+-- performed, kept in the database. One-minute intervals so a short run already has history.
+ALTER DATABASE ExampleShop SET QUERY_STORE = ON;
+ALTER DATABASE ExampleShop SET QUERY_STORE
+    (OPERATION_MODE = READ_WRITE, QUERY_CAPTURE_MODE = ALL, INTERVAL_LENGTH_MINUTES = 1);
+GO
+USE ExampleShop;
+GO
+-- SQL Server 2022 on can give a parameter-sensitive query one plan per kind of value, which would
+-- hide the regression below; this example wants the classic, single-plan behaviour.
+IF CAST(SERVERPROPERTY('ProductMajorVersion') AS int) >= 16
+    EXEC (N'ALTER DATABASE SCOPED CONFIGURATION SET PARAMETER_SENSITIVE_PLAN_OPTIMIZATION = OFF');
+GO
+-- Skewed on purpose: 20,000 delivered shipments and 20 lost ones. Looking up the lost ones wants an
+-- index seek and a lookup per row; the delivered ones, a scan. ShipmentsByStatus keeps whichever
+-- plan it was first compiled for (parameter sniffing), so the workload compiles it each way in turn
+-- (workload.sql): one plan is fine for both, the other a regression for delivered.
+IF OBJECT_ID(N'dbo.Shipments') IS NULL
+BEGIN
+    CREATE TABLE dbo.Shipments (
+        Id int IDENTITY PRIMARY KEY,
+        Status varchar(10) NOT NULL,
+        Weight decimal(8, 2) NOT NULL
+    );
+    CREATE INDEX IX_Shipments_Status ON dbo.Shipments (Status);
+    WITH n AS (
+        SELECT TOP (20020) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS i
+        FROM sys.all_objects a CROSS JOIN sys.all_objects b
+    )
+    INSERT dbo.Shipments (Status, Weight)
+    SELECT CASE WHEN i <= 20 THEN 'Lost' ELSE 'Delivered' END, i % 100 + 0.5 FROM n;
+END
+GO
+CREATE OR ALTER PROCEDURE dbo.ShipmentsByStatus @status varchar(10) AS
+    SELECT s.Id, s.Weight FROM dbo.Shipments AS s WHERE s.Status = @status;
+GO
+
+-- Backup and SQL Server Agent history live in msdb, which the exporter reads as a user with only
+-- SELECT on those tables.
 USE msdb;
 GO
 IF USER_ID(N'sql_exporter') IS NULL
     CREATE USER sql_exporter FOR LOGIN sql_exporter;
 GRANT SELECT ON dbo.backupset TO sql_exporter;
+GRANT SELECT ON dbo.sysjobs TO sql_exporter;
+GRANT SELECT ON dbo.sysjobhistory TO sql_exporter;
 GO

@@ -19,6 +19,8 @@ services:
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: Developer
+      # SQL Server Agent, for the example jobs (sql/agent.sql).
+      MSSQL_AGENT_ENABLED: "true"
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Example.Sa.Passw0rd}
     ports:
       - "1433:1433"

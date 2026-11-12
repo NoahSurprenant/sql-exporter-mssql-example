@@ -1,0 +1,65 @@
+# Plan regressions, from Query Store: queries that have run with more than one plan, and how each
+# plan performed. When one plan is much slower than another for the same query, the slow one is
+# usually a regression (a plan compiled for unrepresentative parameter values, new statistics, an
+# index change), and forcing the fast plan fixes it:
+#   EXEC sp_query_store_force_plan @query_id = <query_id>, @plan_id = <fast plan_id>;
+#
+# Query Store is per database and off by default before SQL Server 2022: the query visits every
+# online user database that has it on (dynamic SQL). VIEW SERVER STATE covers its views, CONNECT
+# ANY DATABASE lets the login in.
+#
+# Cardinality is bounded: the 40 plans per database of queries with several plans, by executions.
+# Durations are weighted across Query Store's intervals, over what it still retains.
+collector_name: mssql_query_store
+
+min_interval: 60s
+
+metrics:
+  - metric_name: mssql_query_store_plan_avg_duration_seconds
+    type: gauge
+    help: 'Average duration of a plan of a query that has had several plans.'
+    key_labels: [database, query_id, plan_id, query]
+    values: [avg_duration_seconds]
+    query_ref: mssql_query_store_plans
+  - metric_name: mssql_query_store_plan_executions
+    type: gauge
+    help: 'Executions of the plan Query Store still has statistics for.'
+    key_labels: [database, query_id, plan_id, query]
+    values: [executions]
+    query_ref: mssql_query_store_plans
+  - metric_name: mssql_query_store_plan_forced
+    type: gauge
+    help: '1 when the plan is forced (sp_query_store_force_plan).'
+    key_labels: [database, query_id, plan_id, query]
+    values: [forced]
+    query_ref: mssql_query_store_plans
+
+queries:
+  - query_name: mssql_query_store_plans
+    query: |
+      DECLARE @sql nvarchar(max);
+      SELECT @sql = STRING_AGG(CONVERT(nvarchar(max), N'
+        SELECT * FROM (
+          SELECT TOP (40) N' + QUOTENAME(name, '''') + N' AS [database],
+            CONVERT(varchar(20), p.query_id) AS query_id, CONVERT(varchar(20), p.plan_id) AS plan_id,
+            LEFT(LTRIM(REPLACE(REPLACE(REPLACE(MAX(t.query_sql_text), CHAR(13), N'' ''), CHAR(10), N'' ''), CHAR(9), N'' '')), 120) AS query,
+            SUM(rs.count_executions) AS executions,
+            SUM(rs.avg_duration * rs.count_executions) / NULLIF(SUM(rs.count_executions), 0) / 1e6 AS avg_duration_seconds,
+            MAX(CAST(p.is_forced_plan AS int)) AS forced
+          FROM ' + QUOTENAME(name) + N'.sys.query_store_plan AS p
+          JOIN ' + QUOTENAME(name) + N'.sys.query_store_query AS q ON q.query_id = p.query_id
+          JOIN ' + QUOTENAME(name) + N'.sys.query_store_query_text AS t ON t.query_text_id = q.query_text_id
+          JOIN ' + QUOTENAME(name) + N'.sys.query_store_runtime_stats AS rs ON rs.plan_id = p.plan_id
+          WHERE p.query_id IN (SELECT query_id FROM ' + QUOTENAME(name) + N'.sys.query_store_plan
+                               GROUP BY query_id HAVING COUNT(*) > 1)
+          GROUP BY p.query_id, p.plan_id
+          ORDER BY SUM(rs.count_executions) DESC) AS t'), N' UNION ALL ')
+      FROM sys.databases
+      WHERE database_id > 4 AND is_query_store_on = 1 AND state_desc = N'ONLINE' AND HAS_DBACCESS(name) = 1;
+      IF @sql IS NULL
+        SELECT CAST(NULL AS sysname) AS [database], CAST(NULL AS varchar(20)) AS query_id,
+               CAST(NULL AS varchar(20)) AS plan_id, CAST(NULL AS nvarchar(120)) AS query,
+               CAST(0 AS bigint) AS executions, CAST(0 AS float) AS avg_duration_seconds, 0 AS forced
+        WHERE 1 = 0;
+      ELSE
+        EXEC sp_executesql @sql;

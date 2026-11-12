@@ -1,0 +1,73 @@
+# SQL Server Agent: whether it is running, and for every job its last outcome, how long ago and
+# how long it ran, and the failed runs still in its history. The panel that tells you the nightly
+# backup or import has been failing since Tuesday.
+#
+# Needs VIEW SERVER STATE (Agent's sessions), and a user in msdb with SELECT on dbo.sysjobs and
+# dbo.sysjobhistory (sql/setup.sql). Job history is trimmed by Agent's retention settings, so
+# failed runs counts what is kept, not every failure ever.
+# The label is job_name, not job: Prometheus keeps job for the scrape job.
+collector_name: mssql_agent
+
+min_interval: 30s
+
+metrics:
+  - metric_name: mssql_agent_up
+    type: gauge
+    help: '1 while SQL Server Agent is running (it has sessions open), 0 otherwise.'
+    values: [up]
+    query: |
+      SELECT CASE WHEN EXISTS (SELECT 1 FROM sys.dm_exec_sessions WHERE program_name LIKE N'SQLAgent%')
+                  THEN 1 ELSE 0 END AS up
+  - metric_name: mssql_agent_job_enabled
+    type: gauge
+    help: '1 when the job is enabled.'
+    key_labels: [job_name]
+    values: [enabled]
+    query_ref: mssql_agent_jobs
+  - metric_name: mssql_agent_job_last_outcome
+    type: gauge
+    help: 'Outcome of the last run: 1 succeeded, 0 failed, 2 retry, 3 canceled, 4 in progress, -1 never ran.'
+    key_labels: [job_name]
+    values: [last_outcome]
+    query_ref: mssql_agent_jobs
+  - metric_name: mssql_agent_job_last_run_age_seconds
+    type: gauge
+    help: 'Seconds since the last run started; -1 when it never ran.'
+    key_labels: [job_name]
+    values: [last_run_age_seconds]
+    query_ref: mssql_agent_jobs
+  - metric_name: mssql_agent_job_last_run_duration_seconds
+    type: gauge
+    help: 'How long the last run took.'
+    key_labels: [job_name]
+    values: [last_run_duration_seconds]
+    query_ref: mssql_agent_jobs
+  - metric_name: mssql_agent_job_failed_runs
+    type: gauge
+    help: 'Failed runs still in the job''s history.'
+    key_labels: [job_name]
+    values: [failed_runs]
+    query_ref: mssql_agent_jobs
+
+queries:
+  - query_name: mssql_agent_jobs
+    query: |
+      WITH runs AS (
+        -- step_id 0 is the job outcome row; run_date, run_time and run_duration are integers
+        -- (yyyymmdd, hhmmss), in the server's local time.
+        SELECT h.job_id, h.run_status,
+          DATETIMEFROMPARTS(h.run_date / 10000, h.run_date / 100 % 100, h.run_date % 100,
+                            h.run_time / 10000, h.run_time / 100 % 100, h.run_time % 100, 0) AS started,
+          h.run_duration / 10000 * 3600 + h.run_duration / 100 % 100 * 60 + h.run_duration % 100 AS duration_seconds,
+          ROW_NUMBER() OVER (PARTITION BY h.job_id ORDER BY h.instance_id DESC) AS rn
+        FROM msdb.dbo.sysjobhistory AS h
+        WHERE h.step_id = 0
+      )
+      SELECT j.name AS job_name,
+        CAST(j.enabled AS int) AS enabled,
+        COALESCE(r.run_status, -1) AS last_outcome,
+        COALESCE(DATEDIFF(second, r.started, GETDATE()), -1) AS last_run_age_seconds,
+        COALESCE(r.duration_seconds, 0) AS last_run_duration_seconds,
+        (SELECT COUNT(*) FROM runs AS f WHERE f.job_id = j.job_id AND f.run_status = 0) AS failed_runs
+      FROM msdb.dbo.sysjobs AS j
+      LEFT JOIN runs AS r ON r.job_id = j.job_id AND r.rn = 1

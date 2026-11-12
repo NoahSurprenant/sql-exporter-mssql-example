@@ -45,6 +45,19 @@ BEGIN
 END
 GO
 
+-- A plan regression for Query Store: ShipmentsByStatus compiled for 'Delivered' (a scan, fine for
+-- both values), then recompiled for 'Lost' (a seek and a lookup per row) and run for 'Delivered',
+-- where it now does 20,000 lookups. Same query, two plans, one much slower.
+EXEC sp_recompile N'dbo.ShipmentsByStatus';
+EXEC dbo.ShipmentsByStatus @status = 'Delivered';
+DECLARE @k int = 0;
+WHILE @k < 20 BEGIN EXEC dbo.ShipmentsByStatus @status = 'Lost'; EXEC dbo.ShipmentsByStatus @status = 'Delivered'; SET @k += 1; END
+EXEC sp_recompile N'dbo.ShipmentsByStatus';
+EXEC dbo.ShipmentsByStatus @status = 'Lost';
+SET @k = 0;
+WHILE @k < 20 BEGIN EXEC dbo.ShipmentsByStatus @status = 'Lost'; EXEC dbo.ShipmentsByStatus @status = 'Delivered'; SET @k += 1; END
+GO
+
 -- A full scan, so one statement stands out by reads.
 SELECT COUNT(*) AS LargeOrders FROM dbo.Orders WHERE Total * 2 > 900;
 GO

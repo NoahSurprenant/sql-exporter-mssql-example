@@ -173,23 +173,26 @@ row("Statements and procedures in the time range");
 const range = (m) => `increase(${m}[$__range])`;
 const topStatements = `topk(20, ${range("mssql_query_elapsed_seconds_total")} > 0)`;
 const onStatements = (m) => `${range(m)} and on(database, query_hash) ${topStatements}`;
+// Per execution, in PromQL: a statement first seen inside the range has no executions yet, and
+// dividing in the table would show infinity; here those rows just have no average.
+const perExec = (m, execs, on) => `(${range(m)} / (${range(execs)} > 0)) and on(${on}) `;
 table("Top statements", "mssql_query_stats over the time range: the 20 statements with the most elapsed time. Avg is per execution. Statements whose plan left the cache drop out.",
-  [prom(topStatements), prom(onStatements("mssql_query_executions_total")), prom(onStatements("mssql_query_cpu_seconds_total")), prom(onStatements("mssql_query_logical_reads_total"))],
+  [prom(topStatements), prom(onStatements("mssql_query_executions_total")),
+   ...["mssql_query_elapsed_seconds_total", "mssql_query_cpu_seconds_total", "mssql_query_logical_reads_total"].map((m) =>
+     prom(perExec(m, "mssql_query_executions_total", "database, query_hash") + topStatements))],
   24, 9, {
-    columns: { database: "Database", query: "Statement", "Value #B": "Executions", "Value #A": "Elapsed", Avg: "Avg elapsed", "CPU / exec": "Avg CPU", "Reads / exec": "Avg reads", query_hash: "Query hash" },
-    hide: ["Value #C", "Value #D"],
-    calc: [["Avg", "Value #A", "/", "Value #B"], ["CPU / exec", "Value #C", "/", "Value #B"], ["Reads / exec", "Value #D", "/", "Value #B"]],
+    columns: { database: "Database", query: "Statement", "Value #B": "Executions", "Value #A": "Elapsed", "Value #C": "Avg elapsed", "Value #D": "Avg CPU", "Value #E": "Avg reads", query_hash: "Query hash" },
     units: { Elapsed: "s", "Avg elapsed": "s", "Avg CPU": "s", Executions: "short", "Avg reads": "short" }, sortBy: "Elapsed",
     widths: { Database: 120, Statement: 520 }, decimals: { Executions: 0, "Avg reads": 0 },
   });
 const topProcs = `topk(20, ${range("mssql_procedure_elapsed_seconds_total")} > 0)`;
 const onProcs = (m) => `${range(m)} and on(database, procedure) ${topProcs}`;
 table("Top stored procedures", "mssql_procedure_stats over the time range: the 20 procedures with the most elapsed time.",
-  [prom(topProcs), prom(onProcs("mssql_procedure_executions_total")), prom(onProcs("mssql_procedure_cpu_seconds_total")), prom(onProcs("mssql_procedure_logical_reads_total"))],
+  [prom(topProcs), prom(onProcs("mssql_procedure_executions_total")),
+   ...["mssql_procedure_elapsed_seconds_total", "mssql_procedure_cpu_seconds_total", "mssql_procedure_logical_reads_total"].map((m) =>
+     prom(perExec(m, "mssql_procedure_executions_total", "database, procedure") + topProcs))],
   24, 7, {
-    columns: { database: "Database", procedure: "Procedure", "Value #B": "Executions", "Value #A": "Elapsed", Avg: "Avg elapsed", "CPU / exec": "Avg CPU", "Reads / exec": "Avg reads" },
-    hide: ["Value #C", "Value #D"],
-    calc: [["Avg", "Value #A", "/", "Value #B"], ["CPU / exec", "Value #C", "/", "Value #B"], ["Reads / exec", "Value #D", "/", "Value #B"]],
+    columns: { database: "Database", procedure: "Procedure", "Value #B": "Executions", "Value #A": "Elapsed", "Value #C": "Avg elapsed", "Value #D": "Avg CPU", "Value #E": "Avg reads" },
     units: { Elapsed: "s", "Avg elapsed": "s", "Avg CPU": "s", Executions: "short", "Avg reads": "short" }, sortBy: "Elapsed",
     decimals: { Executions: 0, "Avg reads": 0 },
   });
@@ -197,6 +200,25 @@ add("bargauge", "Top waits", "What requests waited on most in the time range (ms
   24, 7, [prom(`topk(8, ${range("mssql_wait_seconds_total")} > 0)`, { instant: true, legendFormat: "{{wait_type}}" })], {
     fieldConfig: { defaults: { unit: "s", min: 0, color: { mode: "continuous-BlYlRd" } }, overrides: [] },
     options: { orientation: "horizontal", displayMode: "basic", showUnfilled: true, reduceOptions: { calcs: ["lastNotNull"] } },
+  });
+
+// ---------------------------------------------------------------------------------------------
+row("Plan regressions (Query Store)");
+const byQuery = "database, query_id, query";
+table("Queries with more than one plan", "mssql_query_store: queries Query Store has seen run with several plans, and how much slower their slowest plan is than their fastest. A big ratio is a plan regression: force the fast plan with EXEC sp_query_store_force_plan @query_id, @plan_id (the plan ids are in the next table).",
+  [prom(`max by (${byQuery}) (mssql_query_store_plan_avg_duration_seconds) / min by (${byQuery}) (mssql_query_store_plan_avg_duration_seconds)`),
+   prom(`count by (${byQuery}) (mssql_query_store_plan_avg_duration_seconds)`),
+   prom(`min by (${byQuery}) (mssql_query_store_plan_avg_duration_seconds)`),
+   prom(`max by (${byQuery}) (mssql_query_store_plan_avg_duration_seconds)`)], 24, 6, {
+    columns: { database: "Database", query_id: "Query id", query: "Query", "Value #B": "Plans", "Value #C": "Fastest plan avg", "Value #D": "Slowest plan avg", "Value #A": "Slowest / fastest" },
+    units: { "Fastest plan avg": "s", "Slowest plan avg": "s", "Slowest / fastest": "x" }, decimals: { Plans: 0, "Slowest / fastest": 1 },
+    widths: { Query: 420 }, sortBy: "Slowest / fastest",
+  });
+table("Their plans", "Each plan of those queries: how often it ran and its average duration. Forced shows a plan pinned with sp_query_store_force_plan.",
+  [prom(nameless("mssql_query_store_plan_avg_duration_seconds")), prom(nameless("mssql_query_store_plan_executions")), prom(nameless("mssql_query_store_plan_forced"))], 24, 6, {
+    columns: { database: "Database", query_id: "Query id", plan_id: "Plan id", query: "Query", "Value #B": "Executions", "Value #A": "Avg duration", "Value #C": "Forced" },
+    units: { "Avg duration": "s" }, decimals: { Executions: 0 }, widths: { Query: 420 }, sortBy: "Avg duration",
+    mappings: { Forced: [{ type: "value", options: { 0: { text: "" }, 1: { text: "forced", color: "blue" } } }] },
   });
 
 // ---------------------------------------------------------------------------------------------
@@ -252,6 +274,24 @@ stat("Log growths", "Times a transaction log had to grow in the time range: each
   "sum(increase(mssql_log_growths[$__range]))", 4, { decimals: 0, thresholds: [{ color: "green", value: null }, { color: "orange", value: 1 }] });
 
 // ---------------------------------------------------------------------------------------------
+row("SQL Server Agent jobs");
+stat("Agent running", "Whether SQL Server Agent is running: if it isn't, no job runs, and nothing says so.", "mssql_agent_up", 4,
+  { thresholds: [{ color: "red", value: null }, { color: "green", value: 1 }],
+    mappings: [{ type: "value", options: { 0: { text: "stopped" }, 1: { text: "running" } } }] });
+stat("Failing jobs", "Enabled jobs whose last run failed.", "count(mssql_agent_job_last_outcome == 0 and on(job_name) mssql_agent_job_enabled == 1) or vector(0)", 4,
+  { decimals: 0, thresholds: red(1) });
+const outcome = [{ type: "value", options: {
+  1: { text: "succeeded", color: "green" }, 0: { text: "failed", color: "red" }, 2: { text: "retry", color: "orange" },
+  3: { text: "canceled", color: "orange" }, 4: { text: "running", color: "blue" }, "-1": { text: "never ran" } } }];
+table("Jobs", "mssql_agent: every job, its last outcome, how long ago its last run started and how long it took, and the failed runs still in its history.",
+  [prom(nameless("mssql_agent_job_last_outcome")), prom(nameless("mssql_agent_job_last_run_age_seconds")),
+   prom(nameless("mssql_agent_job_last_run_duration_seconds")), prom(nameless("mssql_agent_job_failed_runs")), prom(nameless("mssql_agent_job_enabled"))], 16, 7, {
+    columns: { job_name: "Job", "Value #E": "Enabled", "Value #A": "Last outcome", "Value #B": "Last run", "Value #C": "Duration", "Value #D": "Failed runs" },
+    units: { "Last run": "dtdurations", Duration: "s" }, decimals: { "Failed runs": 0 }, sortBy: "Failed runs",
+    mappings: { "Last outcome": outcome, Enabled: [{ type: "value", options: { 0: { text: "disabled", color: "orange" }, 1: { text: "yes" } } }],
+      "Last run": [{ type: "value", options: { "-1": { text: "never" } } }] },
+  });
+
 row("SQL Server error log (Linux compose stack)");
 stat("Failed logins", "\"Login failed\" entries in the error log in the time range: a wrong password, a missing login, or someone guessing.",
   { datasource: L, expr: `sum(count_over_time(${event("db.server.errorlog")} |= "Login failed" [$__range]))`, queryType: "instant" }, 4,

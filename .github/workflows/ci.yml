@@ -191,6 +191,10 @@ jobs:
         run: |
           sqlcmd -S localhost -U sa -P $env:MSSQL_SA_PASSWORD -C -b -i sql/setup.sql -v "EXPORTER_PASSWORD=$env:EXPORTER_PASSWORD"
           if ($LASTEXITCODE -ne 0) { throw "setup.sql failed" }
+          # SQL Server Agent, for the example jobs (sql/agent.sql).
+          Set-Service SQLSERVERAGENT -StartupType Automatic
+          Start-Service SQLSERVERAGENT
+          sqlcmd -S localhost -U sa -P $env:MSSQL_SA_PASSWORD -C -i sql/agent.sql
           # Not -b: the workload ends with a deliberate error.
           sqlcmd -S localhost -U sa -P $env:MSSQL_SA_PASSWORD -C -i sql/workload.sql | Out-Null
           sqlcmd -S localhost -U sa -P $env:MSSQL_SA_PASSWORD -C -h -1 -Q "SET NOCOUNT ON; SELECT @@VERSION" |

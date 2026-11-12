@@ -22,6 +22,8 @@ fi
 # reports what changed between two of its collections.
 if [ "${1:-}" != workload ]; then
   run -b -i /sql/setup.sql -v EXPORTER_PASSWORD="$EXPORTER_PASSWORD"
+  # Not -b: a job already started by its schedule is fine.
+  run -i /sql/agent.sql
 fi
 # Not -b: the workload ends with a deliberate error.
 run -i /sql/workload.sql > /dev/null
