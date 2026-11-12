@@ -1,6 +1,6 @@
-# What is running right now: requests by state, blocking, the longest request, and SQL Server's
-# CPU. Point-in-time values, read on every scrape (no min_interval): a blocking chain that lasts 20
-# seconds is gone by the next minute.
+# What is running right now: requests by state, blocking, the longest request, SQL Server's CPU,
+# and user sessions by database and by program. Point-in-time values, read on every scrape (no
+# min_interval): a blocking chain that lasts 20 seconds is gone by the next minute.
 #
 # Needs VIEW SERVER STATE. Only user sessions count (sys.dm_exec_sessions.is_user_process: background
 # tasks such as the checkpoint or the health monitor run for as long as the server does, with
@@ -61,6 +61,27 @@ metrics:
         FROM sys.dm_os_ring_buffers
         WHERE ring_buffer_type = N'RING_BUFFER_SCHEDULER_MONITOR' AND record LIKE N'%<SystemHealth>%'
         ORDER BY [timestamp] DESC), 0) AS cpu_percent
+  - metric_name: mssql_user_sessions
+    type: gauge
+    help: 'User sessions by the database they are in: client connections, not SQL Server''s own background tasks (which mssql_standard''s mssql_connections counts too).'
+    key_labels: [database]
+    values: [sessions]
+    query: |
+      SELECT COALESCE(DB_NAME(database_id), 'unknown') AS [database], COUNT(*) AS sessions
+      FROM sys.dm_exec_sessions
+      WHERE is_user_process = 1
+      GROUP BY database_id
+  - metric_name: mssql_user_sessions_by_program
+    type: gauge
+    help: 'User sessions by the program name the client reported (its connection string Application Name), the 20 programs with most.'
+    key_labels: [program]
+    values: [sessions]
+    query: |
+      SELECT TOP (20) COALESCE(NULLIF(RTRIM(program_name), N''), N'(none)') AS program, COUNT(*) AS sessions
+      FROM sys.dm_exec_sessions
+      WHERE is_user_process = 1
+      GROUP BY COALESCE(NULLIF(RTRIM(program_name), N''), N'(none)')
+      ORDER BY sessions DESC
 
 queries:
   - query_name: mssql_blocking

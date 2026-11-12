@@ -2,9 +2,29 @@
 -- each scheduled every minute. Run as sa after setup.sql, without sqlcmd -b:
 --   sqlcmd -S localhost -U sa -P <sa password> -C -i sql/agent.sql
 -- Agent must be running (MSSQL_AGENT_ENABLED in compose.yaml; the SQLSERVERAGENT service on
--- Windows). The script waits up to 90 seconds for it, starts both jobs and waits for them to finish,
--- so their outcomes are in history before the checks run.
+-- Windows). The script waits up to two minutes for it to finish starting (while it starts, msdb
+-- refuses job changes: "Cannot perform this operation while SQLServerAgent is starting"), creates
+-- the jobs, starts both and waits for them to finish, so their outcomes are in history before the
+-- checks run.
 USE msdb;
+GO
+SET NOCOUNT ON;
+DECLARE @i int = 0, @ready bit = 0;
+WHILE @ready = 0 AND @i < 120
+BEGIN
+    IF EXISTS (SELECT 1 FROM sys.dm_exec_sessions WHERE program_name LIKE N'SQLAgent%')
+    BEGIN
+        BEGIN TRY
+            EXEC msdb.dbo.sp_is_sqlagent_starting;  -- raises 14258 while Agent is still starting
+            SET @ready = 1;
+        END TRY
+        BEGIN CATCH
+        END CATCH;
+    END
+    IF @ready = 0 BEGIN WAITFOR DELAY '00:00:01'; SET @i += 1; END
+END
+IF @ready = 0
+    PRINT 'SQL Server Agent is not running: the jobs run on their schedule once it is.';
 GO
 SET NOCOUNT ON;
 DECLARE @jobs TABLE (name sysname, command nvarchar(400), description nvarchar(400));
@@ -32,14 +52,7 @@ GO
 
 SET NOCOUNT ON;
 DECLARE @i int = 0;
-WHILE NOT EXISTS (SELECT 1 FROM sys.dm_exec_sessions WHERE program_name LIKE N'SQLAgent%') AND @i < 90
-BEGIN
-    WAITFOR DELAY '00:00:01';
-    SET @i += 1;
-END
-IF NOT EXISTS (SELECT 1 FROM sys.dm_exec_sessions WHERE program_name LIKE N'SQLAgent%')
-    PRINT 'SQL Server Agent is not running: the jobs run on their schedule once it is.';
-ELSE
+IF EXISTS (SELECT 1 FROM sys.dm_exec_sessions WHERE program_name LIKE N'SQLAgent%')
 BEGIN
     -- Already running from its schedule is fine.
     BEGIN TRY EXEC msdb.dbo.sp_start_job @job_name = N'ExampleShop - refresh totals'; END TRY BEGIN CATCH END CATCH;

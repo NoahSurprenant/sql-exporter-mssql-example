@@ -148,10 +148,18 @@ stat("User errors", "Errors returned to clients in the time range: failed statem
 stat("Page life expectancy", "Seconds a data page stays in memory. Falling fast, or low for the server's memory, means memory pressure.",
   "mssql_page_life_expectancy_seconds", 4, { unit: "s", thresholds: [{ color: "red", value: null }, { color: "orange", value: 60 }, { color: "green", value: 300 }] });
 
-series("Batch requests / s", "Batches received per second: overall throughput.", [prom("rate(mssql_batch_requests[1m])", { legendFormat: "batches" })], 8, 7, { unit: "reqps", min: 0 });
+series("Batch requests / s", "Batches received per second: overall throughput.", [prom("rate(mssql_batch_requests[1m])", { legendFormat: "batches" })], 12, 7, { unit: "reqps", min: 0 });
 series("Requests by state", "Executing user requests: running on a CPU, runnable (waiting for one), suspended (waiting on a lock, I/O or memory).",
-  [prom("mssql_requests", { legendFormat: "{{status}}" })], 8, 7, { stack: true, min: 0 });
-series("Connections by database", "Open sessions per database.", [prom('mssql_connections{db!=""}', { legendFormat: "{{db}}" })], 8, 7, { min: 0 });
+  [prom("mssql_requests", { legendFormat: "{{status}}" })], 12, 7, { stack: true, min: 0 });
+// ---------------------------------------------------------------------------------------------
+row("Sessions");
+series("User sessions by program", "User sessions by the program name the client reported (mssql_user_sessions_by_program): an application holding more connections than it should stands out here. sql_exporter and the OpenTelemetry Collector both report go-mssqldb.",
+  [prom("mssql_user_sessions_by_program", { legendFormat: "{{program}}" })], 8, 7, { min: 0 });
+
+series("User sessions by database", "Client sessions by the database they are in (mssql_user_sessions). Short-lived connections, such as this example's workload, only show when a scrape catches them.",
+  [prom("mssql_user_sessions", { legendFormat: "{{database}}" })], 8, 7, { min: 0 });
+series("All sessions by database (incl. system tasks)", "Upstream mssql_standard's mssql_connections: every row of sys.sysprocesses, so SQL Server's own background tasks too (about 50, all in master). Kept as upstream reports it; User sessions by database is the client view.",
+  [prom('mssql_connections{db!=""}', { legendFormat: "{{db}}" })], 8, 7, { min: 0 });
 
 // ---------------------------------------------------------------------------------------------
 row("Blocking and deadlocks");
@@ -259,9 +267,9 @@ table("Database size", "Data and log file sizes per database, and how much of th
     hide: ["Value #C"], calc: [["Log used", "Value #C", "/", "Value #B"]],
     units: { Data: "bytes", Log: "bytes", "Log used": "percentunit" }, sortBy: "Data",
   });
-series("I/O latency", "Average time per read and per write, per database and file type (mssql_io_files): stall divided by count. Log writes above a few ms slow every commit.",
-  [prom('rate(mssql_io_file_read_stall_seconds[5m]) / rate(mssql_io_file_reads[5m]) > 0', { legendFormat: "{{db}} {{file_type}} read" }),
-   prom('rate(mssql_io_file_write_stall_seconds[5m]) / rate(mssql_io_file_writes[5m]) > 0', { legendFormat: "{{db}} {{file_type}} write" })], 8, 8, { unit: "s", min: 0 });
+series("I/O latency", "Average time per read and per write, per database and file type (mssql_io_files): stall divided by count, so a gap where a file had no I/O. Log writes above a few ms slow every commit.",
+  [prom('rate(mssql_io_file_read_stall_seconds[5m]) / rate(mssql_io_file_reads[5m])', { legendFormat: "{{db}} {{file_type}} read" }),
+   prom('rate(mssql_io_file_write_stall_seconds[5m]) / rate(mssql_io_file_writes[5m])', { legendFormat: "{{db}} {{file_type}} write" })], 8, 8, { unit: "s", min: 0 });
 series("tempdb", "tempdb space by use: temp tables (user objects), sorts and hashes (internal objects), row versions (version store).",
   [prom('mssql_tempdb_bytes{use!="free"}', { legendFormat: "{{use}}" })], 8, 8, { unit: "bytes", stack: true, min: 0 });
 table("Last backup", "Time since each database's last backup of each type finished. Never backed up shows as never.",

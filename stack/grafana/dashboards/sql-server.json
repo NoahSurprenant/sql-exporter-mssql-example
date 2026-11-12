@@ -415,7 +415,7 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 8,
+        "w": 12,
         "x": 0,
         "y": 5
       },
@@ -465,8 +465,8 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 8,
-        "x": 8,
+        "w": 12,
+        "x": 12,
         "y": 5
       },
       "targets": [
@@ -504,10 +504,121 @@
       }
     },
     {
-      "type": "timeseries",
-      "title": "Connections by database",
-      "description": "Open sessions per database.",
+      "type": "row",
+      "title": "Sessions",
       "id": 10,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "User sessions by program",
+      "description": "User sessions by the program name the client reported (mssql_user_sessions_by_program): an application holding more connections than it should stands out here. sql_exporter and the OpenTelemetry Collector both report go-mssqldb.",
+      "id": 11,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "mssql_user_sessions_by_program",
+          "legendFormat": "{{program}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "none"
+            },
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "User sessions by database",
+      "description": "Client sessions by the database they are in (mssql_user_sessions). Short-lived connections, such as this example's workload, only show when a scrape catches them.",
+      "id": 12,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "mssql_user_sessions",
+          "legendFormat": "{{database}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "custom": {
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "none"
+            },
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "All sessions by database (incl. system tasks)",
+      "description": "Upstream mssql_standard's mssql_connections: every row of sys.sysprocesses, so SQL Server's own background tasks too (about 50, all in master). Kept as upstream reports it; User sessions by database is the client view.",
+      "id": 13,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -516,7 +627,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 5
+        "y": 13
       },
       "targets": [
         {
@@ -555,13 +666,13 @@
     {
       "type": "row",
       "title": "Blocking and deadlocks",
-      "id": 11,
+      "id": 14,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 20
       },
       "panels": []
     },
@@ -569,7 +680,7 @@
       "type": "timeseries",
       "title": "Blocking",
       "description": "Requests blocked right now, and how long the longest of them has waited.",
-      "id": 12,
+      "id": 15,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -578,7 +689,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 13
+        "y": 21
       },
       "targets": [
         {
@@ -636,7 +747,7 @@
       "type": "timeseries",
       "title": "Longest running request",
       "description": "Elapsed time of the longest user request executing at each scrape.",
-      "id": 13,
+      "id": 16,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -645,7 +756,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 13
+        "y": 21
       },
       "targets": [
         {
@@ -686,7 +797,7 @@
       "type": "table",
       "title": "Blocking chains",
       "description": "From the collector's query samples (db.server.query_sample): every request seen blocked, the session blocking it, what it waited on, and its statement.",
-      "id": 14,
+      "id": 17,
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -695,7 +806,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 28
       },
       "targets": [
         {
@@ -808,7 +919,7 @@
       "type": "logs",
       "title": "Deadlock graphs",
       "description": "Every deadlock, from SQL Server's system_health session (db.server.deadlock). Expand one: the processes, the statements they ran, the resources they held and wanted, and which was chosen as the victim.",
-      "id": 15,
+      "id": 18,
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -817,7 +928,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 35
       },
       "targets": [
         {
@@ -846,13 +957,13 @@
     {
       "type": "row",
       "title": "Statements and procedures in the time range",
-      "id": 16,
+      "id": 19,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 35
+        "y": 43
       },
       "panels": []
     },
@@ -860,7 +971,7 @@
       "type": "table",
       "title": "Top statements",
       "description": "mssql_query_stats over the time range: the 20 statements with the most elapsed time. Avg is per execution. Statements whose plan left the cache drop out.",
-      "id": 17,
+      "id": 20,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -869,7 +980,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 36
+        "y": 44
       },
       "targets": [
         {
@@ -1095,7 +1206,7 @@
       "type": "table",
       "title": "Top stored procedures",
       "description": "mssql_procedure_stats over the time range: the 20 procedures with the most elapsed time.",
-      "id": 18,
+      "id": 21,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1104,7 +1215,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 45
+        "y": 53
       },
       "targets": [
         {
@@ -1304,7 +1415,7 @@
       "type": "bargauge",
       "title": "Top waits",
       "description": "What requests waited on most in the time range (mssql_wait_stats, idle waits left out). LCK_*: blocking; PAGEIOLATCH_*: reading pages from disk; WRITELOG: log writes; SOS_SCHEDULER_YIELD / CXPACKET: CPU and parallelism.",
-      "id": 19,
+      "id": 22,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1313,7 +1424,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 52
+        "y": 60
       },
       "targets": [
         {
@@ -1351,13 +1462,13 @@
     {
       "type": "row",
       "title": "Plan regressions (Query Store)",
-      "id": 20,
+      "id": 23,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 59
+        "y": 67
       },
       "panels": []
     },
@@ -1365,7 +1476,7 @@
       "type": "table",
       "title": "Queries with more than one plan",
       "description": "mssql_query_store: queries Query Store has seen run with several plans, and how much slower their slowest plan is than their fastest. A big ratio is a plan regression: force the fast plan with EXEC sp_query_store_force_plan @query_id, @plan_id (the plan ids are in the next table).",
-      "id": 21,
+      "id": 24,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1374,7 +1485,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 60
+        "y": 68
       },
       "targets": [
         {
@@ -1552,7 +1663,7 @@
       "type": "table",
       "title": "Their plans",
       "description": "Each plan of those queries: how often it ran and its average duration. Forced shows a plan pinned with sp_query_store_force_plan.",
-      "id": 22,
+      "id": 25,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1561,7 +1672,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 66
+        "y": 74
       },
       "targets": [
         {
@@ -1717,13 +1828,13 @@
     {
       "type": "row",
       "title": "Query plans (OpenTelemetry Collector)",
-      "id": 23,
+      "id": 26,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 72
+        "y": 80
       },
       "panels": []
     },
@@ -1731,7 +1842,7 @@
       "type": "table",
       "title": "Plan warnings",
       "description": "The plans of the top queries (db.server.query_plan), with what usually makes a plan slow pulled out of the XML: an implicit conversion that blocks a seek, a key lookup per row, a scan, a spill to tempdb, a missing index, a join with no predicate. Cost is the optimizer's estimate.",
-      "id": 24,
+      "id": 27,
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -1740,7 +1851,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 73
+        "y": 81
       },
       "targets": [
         {
@@ -2036,7 +2147,7 @@
       "type": "logs",
       "title": "Execution plans",
       "description": "The plan XML itself (db.server.query_plan): match it to the table above by sqlserver_query_hash in the line's details. Save one as .sqlplan to open it graphically in SSMS or Azure Data Studio.",
-      "id": 25,
+      "id": 28,
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -2045,7 +2156,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 82
+        "y": 90
       },
       "targets": [
         {
@@ -2075,7 +2186,7 @@
       "type": "logs",
       "title": "Procedure definitions",
       "description": "The source of the procedures in the top list (db.server.procedure_definition).",
-      "id": 26,
+      "id": 29,
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -2084,7 +2195,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 91
+        "y": 99
       },
       "targets": [
         {
@@ -2113,13 +2224,13 @@
     {
       "type": "row",
       "title": "Indexes",
-      "id": 27,
+      "id": 30,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 99
+        "y": 107
       },
       "panels": []
     },
@@ -2127,7 +2238,7 @@
       "type": "table",
       "title": "Missing-index suggestions",
       "description": "mssql_missing_indexes: indexes the optimizer wanted, top 10 per database by estimated improvement. Overlapping suggestions are common: combine them, and weigh the write cost, before creating any.",
-      "id": 28,
+      "id": 31,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2136,7 +2247,7 @@
         "h": 7,
         "w": 14,
         "x": 0,
-        "y": 100
+        "y": 108
       },
       "targets": [
         {
@@ -2282,7 +2393,7 @@
       "type": "table",
       "title": "Unused indexes",
       "description": "mssql_index_usage: indexes every write maintains but no query has read since SQL Server started. Candidates to drop, once the uptime covers a full business cycle.",
-      "id": 29,
+      "id": 32,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2291,7 +2402,7 @@
         "h": 7,
         "w": 10,
         "x": 14,
-        "y": 100
+        "y": 108
       },
       "targets": [
         {
@@ -2408,13 +2519,13 @@
     {
       "type": "row",
       "title": "Storage, I/O and backups",
-      "id": 30,
+      "id": 33,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 107
+        "y": 115
       },
       "panels": []
     },
@@ -2422,7 +2533,7 @@
       "type": "table",
       "title": "Database size",
       "description": "Data and log file sizes per database, and how much of the log is in use. A log that stays full is waiting on a log backup (full recovery) or a long transaction.",
-      "id": 31,
+      "id": 34,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2431,7 +2542,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 108
+        "y": 116
       },
       "targets": [
         {
@@ -2570,8 +2681,8 @@
     {
       "type": "timeseries",
       "title": "I/O latency",
-      "description": "Average time per read and per write, per database and file type (mssql_io_files): stall divided by count. Log writes above a few ms slow every commit.",
-      "id": 32,
+      "description": "Average time per read and per write, per database and file type (mssql_io_files): stall divided by count, so a gap where a file had no I/O. Log writes above a few ms slow every commit.",
+      "id": 35,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2580,7 +2691,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 108
+        "y": 116
       },
       "targets": [
         {
@@ -2589,7 +2700,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(mssql_io_file_read_stall_seconds[5m]) / rate(mssql_io_file_reads[5m]) > 0",
+          "expr": "rate(mssql_io_file_read_stall_seconds[5m]) / rate(mssql_io_file_reads[5m])",
           "legendFormat": "{{db}} {{file_type}} read"
         },
         {
@@ -2598,7 +2709,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(mssql_io_file_write_stall_seconds[5m]) / rate(mssql_io_file_writes[5m]) > 0",
+          "expr": "rate(mssql_io_file_write_stall_seconds[5m]) / rate(mssql_io_file_writes[5m])",
           "legendFormat": "{{db}} {{file_type}} write"
         }
       ],
@@ -2630,7 +2741,7 @@
       "type": "timeseries",
       "title": "tempdb",
       "description": "tempdb space by use: temp tables (user objects), sorts and hashes (internal objects), row versions (version store).",
-      "id": 33,
+      "id": 36,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2639,7 +2750,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 108
+        "y": 116
       },
       "targets": [
         {
@@ -2680,7 +2791,7 @@
       "type": "table",
       "title": "Last backup",
       "description": "Time since each database's last backup of each type finished. Never backed up shows as never.",
-      "id": 34,
+      "id": 37,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2689,7 +2800,7 @@
         "h": 8,
         "w": 20,
         "x": 0,
-        "y": 116
+        "y": 124
       },
       "targets": [
         {
@@ -2791,7 +2902,7 @@
       "type": "stat",
       "title": "Log growths",
       "description": "Times a transaction log had to grow in the time range: each growth stalls writes; size the log so it doesn't have to.",
-      "id": 35,
+      "id": 38,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2800,7 +2911,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 116
+        "y": 124
       },
       "targets": [
         {
@@ -2850,13 +2961,13 @@
     {
       "type": "row",
       "title": "SQL Server Agent jobs",
-      "id": 36,
+      "id": 39,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 124
+        "y": 132
       },
       "panels": []
     },
@@ -2864,7 +2975,7 @@
       "type": "stat",
       "title": "Agent running",
       "description": "Whether SQL Server Agent is running: if it isn't, no job runs, and nothing says so.",
-      "id": 37,
+      "id": 40,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2873,7 +2984,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 125
+        "y": 133
       },
       "targets": [
         {
@@ -2935,7 +3046,7 @@
       "type": "stat",
       "title": "Failing jobs",
       "description": "Enabled jobs whose last run failed.",
-      "id": 38,
+      "id": 41,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2944,7 +3055,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 125
+        "y": 133
       },
       "targets": [
         {
@@ -2995,7 +3106,7 @@
       "type": "table",
       "title": "Jobs",
       "description": "mssql_agent: every job, its last outcome, how long ago its last run started and how long it took, and the failed runs still in its history.",
-      "id": 39,
+      "id": 42,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -3004,7 +3115,7 @@
         "h": 7,
         "w": 16,
         "x": 8,
-        "y": 125
+        "y": 133
       },
       "targets": [
         {
@@ -3240,13 +3351,13 @@
     {
       "type": "row",
       "title": "SQL Server error log (Linux compose stack)",
-      "id": 40,
+      "id": 43,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 132
+        "y": 140
       },
       "panels": []
     },
@@ -3254,7 +3365,7 @@
       "type": "stat",
       "title": "Failed logins",
       "description": "\"Login failed\" entries in the error log in the time range: a wrong password, a missing login, or someone guessing.",
-      "id": 41,
+      "id": 44,
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -3263,7 +3374,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 133
+        "y": 141
       },
       "targets": [
         {
@@ -3315,7 +3426,7 @@
       "type": "logs",
       "title": "Error log",
       "description": "SQL Server's own error log (event db.server.errorlog), read from the container's log directory: startup, recovery, failed logins, I/O and memory errors. Not collected from the Windows runs.",
-      "id": 42,
+      "id": 45,
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -3324,7 +3435,7 @@
         "h": 8,
         "w": 20,
         "x": 4,
-        "y": 133
+        "y": 141
       },
       "targets": [
         {

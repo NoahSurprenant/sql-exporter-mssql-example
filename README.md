@@ -104,7 +104,8 @@ panels: a 20-second blocking chain, a deadlock and a failed login
 
 | Row | Panels |
 | --- | --- |
-| Overview | Whether the exporter reaches SQL Server, SQL Server's CPU, blocked requests, deadlocks and user errors in the range, page life expectancy; batch requests, requests by state, connections |
+| Overview | Whether the exporter reaches SQL Server, SQL Server's CPU, blocked requests, deadlocks and user errors in the range, page life expectancy; batch requests, requests by state |
+| Sessions | User sessions by program and by database (client connections only), and upstream's count of all sessions by database, which includes SQL Server's own background tasks (about 50, in master) |
 | Blocking and deadlocks | Blocked requests, head blockers and the longest wait over time; the longest-running request; blocking chains (session, blocked by, wait, resource, statement); deadlock graphs |
 | Statements and procedures | Top statements and procedures **in the time range**: executions, total and average elapsed, average CPU and reads per execution; top waits |
 | Query plans | Plan warnings per query (cost, parallelism, implicit conversion, key lookup, scan, spill, missing index, join with no predicate); the plan XML; procedure definitions |
