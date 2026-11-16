@@ -3,8 +3,7 @@
 // change in Grafana's editor, port it back here (or export the JSON and drop this script).
 // Importing it only builds the dashboard; the file is written when it is run (tests/dashboard.test.mjs
 // compares the two).
-import { realpathSync, writeFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { writeFileSync } from "node:fs";
 
 const P = { type: "prometheus", uid: "prometheus" };
 const L = { type: "loki", uid: "loki" };
@@ -316,7 +315,8 @@ export const dashboard = {
 };
 // The file's exact text, as written below; tests/dashboard.test.mjs compares the committed file with it.
 export const text = JSON.stringify(dashboard, null, 2) + "\n";
-if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// import.meta.main (Node 24.2 and later): true only when this file is the one node was started with.
+if (import.meta.main) {
   writeFileSync(new URL("./dashboards/sql-server.json", import.meta.url), text);
   console.log(`${panels.length} panels`);
 }

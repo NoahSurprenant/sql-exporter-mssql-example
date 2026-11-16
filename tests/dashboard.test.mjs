@@ -199,6 +199,16 @@ test("the up-to-date check compares the text the generator writes", () => {
   assert.ok(!upToDate(JSON.stringify({ ...rest, uid }, null, 2) + "\n"), "a copy with its keys reordered passed");
 });
 
+test("importing the generator works when argv[1] is no file (a script piped to node -)", () => {
+  const generator = new URL("stack/grafana/dashboard.mjs", root).href;
+  const run = spawnSync(process.execPath, ["--input-type=module", "-"], {
+    input: `import { text } from ${JSON.stringify(generator)}; process.stdout.write(String(text.length));`,
+    encoding: "utf8",
+  });
+  assert.equal(run.status, 0, `importing dashboard.mjs from node - failed:\n${run.stderr}`);
+  assert.equal(run.stdout, String(generatedText.length));
+});
+
 test("the committed dashboard is what stack/grafana/dashboard.mjs generates", () => {
   assert.ok(upToDate(read("stack/grafana/dashboards/sql-server.json")),
     "stack/grafana/dashboards/sql-server.json is out of date: run `node stack/grafana/dashboard.mjs` and commit the result");
