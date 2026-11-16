@@ -30,15 +30,79 @@ const label = (panel) => `panel ${panel.id} "${panel.title}"`;
 
 // The data sources stack/grafana/provisioning sets up: {uid: type}. The dashboard has no data source
 // variables, so a fixed uid is right as long as provisioning gives every Grafana that uid.
-function provisionedDatasources() {
-  const sources = {};
-  for (const entry of read("stack/grafana/provisioning/datasources/datasources.yaml").split(/^\s*- /m).slice(1)) {
-    const uid = entry.match(/^\s*uid:\s*(\S+)/m)?.[1];
-    const type = entry.match(/^\s*type:\s*(\S+)/m)?.[1];
-    if (uid) sources[uid] = type;
-  }
-  return sources;
+//
+// Node has no YAML parser and the tests take no packages, so this reads the one shape a Grafana
+// provisioning file has: the items of the top-level `datasources:` block list, and in each item
+// only its own `key: value` scalars (nested maps and lists such as jsonData are skipped). Values
+// may be quoted ("..." or '...') and may have a trailing # comment. Flow style ([...], {...}) isn't
+// read; the file doesn't use it, and the "no data sources" assertion would catch it if it did.
+function yamlScalar(text) {
+  const quoted = text.match(/^"((?:[^"\\]|\\.)*)"|^'((?:[^']|'')*)'/);
+  if (quoted) return quoted[1] !== undefined ? JSON.parse(`"${quoted[1]}"`) : quoted[2].replaceAll("''", "'");
+  return text.replace(/(^|\s)#.*$/, "").trim();
 }
+function parseDatasources(text) {
+  const entries = [];
+  let inList = false;
+  let itemIndent = -1;
+  let keyIndent = -1;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim() || /^\s*#/.test(line) || line.startsWith("---")) continue;
+    const indent = line.search(/\S/);
+    if (indent === 0) { inList = /^datasources:\s*(#.*)?$/.test(line); itemIndent = -1; continue; }
+    if (!inList) continue;
+    // A new item: "- " at the list's indentation; its first key starts on the same line.
+    const item = line.match(/^\s*-(\s+)(.*)$/);
+    let rest = line.trimStart();
+    let restIndent = indent;
+    if (item && (itemIndent < 0 || indent === itemIndent)) {
+      itemIndent = indent;
+      keyIndent = indent + 1 + item[1].length;
+      entries.push({});
+      rest = item[2];
+      restIndent = keyIndent;
+    }
+    const key = restIndent === keyIndent && rest.match(/^([\w.-]+):(?:\s+(.*))?$/);
+    if (key && entries.length) {
+      const value = yamlScalar(key[2] ?? "");
+      if (value !== "") entries.at(-1)[key[1]] = value;
+    }
+  }
+  return entries.filter((e) => e.uid);
+}
+function provisionedDatasources() {
+  return Object.fromEntries(parseDatasources(read("stack/grafana/provisioning/datasources/datasources.yaml"))
+    .map((d) => [d.uid, d.type]));
+}
+
+test("the provisioning parser reads quoted values, comments and nested lists", () => {
+  const yaml = [
+    "apiVersion: 1",
+    "# a comment: with a colon",
+    "datasources:",
+    "  - name: Loki",
+    '    type: "loki"   # quoted, with a comment',
+    "    uid: 'loki'",
+    "    jsonData:",
+    "      derivedFields:",
+    "        - name: trace",
+    "          type: not-a-datasource",
+    "          uid: not-a-datasource",
+    "    isDefault: false",
+    "",
+    "  -   name: Prometheus",
+    '      uid: "prom#1"',
+    "      type: prometheus # the default",
+    "      isDefault: true",
+    "deleteDatasources:",
+    "  - name: Old",
+    "    uid: old",
+  ].join("\n");
+  assert.deepEqual(parseDatasources(yaml).map(({ uid, type, isDefault }) => ({ uid, type, isDefault })), [
+    { uid: "loki", type: "loki", isDefault: "false" },
+    { uid: "prom#1", type: "prometheus", isDefault: "true" },
+  ]);
+});
 
 // Every metric_name in collectors/*.collector.yml, as tests/check_metrics.py reads them.
 function collectorMetrics() {
