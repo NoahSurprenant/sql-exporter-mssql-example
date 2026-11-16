@@ -64,9 +64,12 @@ jobs:
           tar -xzf "$f" --strip-components=1 "prometheus-$PROMETHEUS_VERSION.linux-amd64/promtool"
           echo "PROMTOOL=$RUNNER_TEMP/promtool" >> "$GITHUB_ENV"
       - name: Check the dashboard
-        run: node --test tests/*.test.mjs
+        run: node --test tests/dashboard.test.mjs
 
   linux:
+    # The fast dashboard checks first: a stale dashboard or a renamed metric fails in seconds there,
+    # before these and the Windows jobs spend minutes finding it as an empty panel.
+    needs: dashboard
     name: Linux container, SQL Server ${{ matrix.version }}
     runs-on: ubuntu-24.04
     # The 2022 job on main also collects for 15 minutes for the Pages site.
@@ -188,6 +191,7 @@ jobs:
         run: docker compose logs
 
   windows:
+    needs: dashboard
     name: Windows, SQL Server ${{ matrix.version }}, exporter on ${{ matrix.exporter == 'wsl2' && 'Docker on Linux (WSL 2)' || 'Windows' }}
     runs-on: windows-2022
     timeout-minutes: 45
