@@ -1,6 +1,6 @@
 // Static checks of the Grafana dashboard: no SQL Server, Prometheus or Grafana needed, seconds to run.
 //
-//   node --test tests/*.test.mjs                 # PROMTOOL=/path/to/promtool also parses the PromQL
+//   node --test tests/dashboard.test.mjs         # PROMTOOL=/path/to/promtool also parses the PromQL
 //
 // tests/check_grafana.py runs every panel through a live Grafana, which needs the whole stack and a
 // few minutes. These catch the mistakes that need neither, on every pull request: a committed

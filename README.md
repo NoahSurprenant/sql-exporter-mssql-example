@@ -116,10 +116,11 @@ panels: a 20-second blocking chain, a deadlock and a failed login
 | Error log | Failed logins; SQL Server's error log (Linux compose stack) |
 
 The dashboard JSON is generated: change [`stack/grafana/dashboard.mjs`](stack/grafana/dashboard.mjs)
-and run `node stack/grafana/dashboard.mjs`. `node --test tests/*.test.mjs` checks it without the
-stack, in seconds (Node 20 or later, no packages): the committed JSON matches the generator, every
-panel is on the grid with its own id and a provisioned data source, every metric a query uses is a
-`metric_name` in the collectors, and, with `PROMTOOL=/path/to/promtool`, every query parses as PromQL.
+and run `node stack/grafana/dashboard.mjs`. `node --test tests/dashboard.test.mjs` checks it without
+the stack, in seconds (Node 24.2 or later, no packages): the committed file is exactly what the
+generator writes, every panel is on the grid with its own id, overlaps no other and has a
+provisioned data source, every metric a query uses is a `metric_name` in the collectors, and, with
+`PROMTOOL=/path/to/promtool`, every query parses as PromQL.
 
 ```sh
 docker compose up -d                        # SQL Server 2022; MSSQL_VERSION=2017, 2019 or 2025 for others
