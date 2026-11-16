@@ -314,7 +314,9 @@ export const dashboard = {
   uid: "sql-server-example", title: "SQL Server example", tags: ["sql-server"], timezone: "browser",
   schemaVersion: 41, version: 1, refresh: "30s", time: { from: "now-30m", to: "now" }, panels,
 };
+// The file's exact text, as written below; tests/dashboard.test.mjs compares the committed file with it.
+export const text = JSON.stringify(dashboard, null, 2) + "\n";
 if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  writeFileSync(new URL("./dashboards/sql-server.json", import.meta.url), JSON.stringify(dashboard, null, 2) + "\n");
+  writeFileSync(new URL("./dashboards/sql-server.json", import.meta.url), text);
   console.log(`${panels.length} panels`);
 }

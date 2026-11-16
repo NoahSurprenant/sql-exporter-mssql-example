@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 
-import { dashboard as generated } from "../stack/grafana/dashboard.mjs";
+import { text as generatedText } from "../stack/grafana/dashboard.mjs";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), "utf8");
@@ -29,8 +29,8 @@ const queried = panels.filter((p) => p.targets?.length);
 const label = (panel) => `panel ${panel.id} "${panel.title}"`;
 
 // The data sources stack/grafana/provisioning sets up, each as its scalar keys ({name, uid, type,
-// isDefault, ...}, all strings). The dashboard has no data source
-// variables, so a fixed uid is right as long as provisioning gives every Grafana that uid.
+// isDefault, ...}, all strings). The dashboard has no data source variables, so a fixed uid is
+// right as long as provisioning gives every Grafana that uid.
 //
 // Node has no YAML parser and the tests take no packages, so this reads the one shape a Grafana
 // provisioning file has: the items of the top-level `datasources:` block list, and in each item
@@ -188,8 +188,19 @@ test("a query without a data source goes to the provisioned default", () => {
 const datasources = parseDatasources(read("stack/grafana/provisioning/datasources/datasources.yaml"));
 const promTargets = targetsOn("prometheus", queried, datasources);
 
+// The text, not the parsed JSON: a reformatted or reordered file is one the generator would rewrite.
+const upToDate = (fileText) => fileText === generatedText;
+
+test("the up-to-date check compares the text the generator writes", () => {
+  const text = read("stack/grafana/dashboards/sql-server.json");
+  assert.ok(!upToDate(JSON.stringify(JSON.parse(text))), "a minified copy passed");
+  assert.ok(!upToDate(text.trimEnd()), "a copy without the final newline passed");
+  const { uid, ...rest } = JSON.parse(text);
+  assert.ok(!upToDate(JSON.stringify({ ...rest, uid }, null, 2) + "\n"), "a copy with its keys reordered passed");
+});
+
 test("the committed dashboard is what stack/grafana/dashboard.mjs generates", () => {
-  assert.deepEqual(committed, JSON.parse(JSON.stringify(generated)),
+  assert.ok(upToDate(read("stack/grafana/dashboards/sql-server.json")),
     "stack/grafana/dashboards/sql-server.json is out of date: run `node stack/grafana/dashboard.mjs` and commit the result");
 });
 
