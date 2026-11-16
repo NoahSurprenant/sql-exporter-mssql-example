@@ -60,6 +60,25 @@ const VARIABLES = { __rate_interval: "1m", __interval: "15s", __range: "1h", __r
 function fill(expr) {
   return expr.replace(/\$\{(\w+)\}|\$(\w+)/g, (all, braced, plain) => VARIABLES[braced ?? plain] ?? all);
 }
+// Grafana variable references that are not one of VARIABLES, in Grafana's three syntaxes ($name,
+// ${name}, ${name:format}, [[name]]; its own pattern in public/app/features/variables/utils.ts).
+// Any other $ is PromQL's own: a regex anchor, or a capture group in label_replace ("$1", "${1}"),
+// which Grafana leaves alone because no variable has a number for a name.
+const VARIABLE = /\$(\w+)|\[\[(\w+?)(?::\w+)?\]\]|\$\{(\w+)(?:\.[^:^}]+)?(?::[^}]+)?\}/g;
+function unknownVariables(expr) {
+  return [...expr.matchAll(VARIABLE)]
+    .filter((m) => { const name = m[1] ?? m[2] ?? m[3]; return !/^\d+$/.test(name) && !Object.hasOwn(VARIABLES, name); })
+    .map((m) => m[0]);
+}
+
+test("the variable check flags unknown Grafana variables, not every $", () => {
+  assert.deepEqual(unknownVariables('label_replace(up, "db", "$1", "instance", "(.*)")'), []);
+  assert.deepEqual(unknownVariables('label_replace(up, "db", "${1}x", "instance", "(.*)")'), []);
+  assert.deepEqual(unknownVariables('up{db=~"Example.*$"}'), []);
+  assert.deepEqual(unknownVariables("rate(a[$__rate_interval]) * ${__interval_ms}"), []);
+  assert.deepEqual(unknownVariables('a{db="$db"} / b{x="${server}"} / c{y="[[old]]"}'), ["$db", "${server}", "[[old]]"]);
+  assert.deepEqual(unknownVariables('a{db="${db:regex}"}'), ["${db:regex}"]);
+});
 
 // The metric names a PromQL expression selects. Strings and # comments (in one pass, so a quote in
 // a comment or a # in a string is no problem), Grafana variables, label matchers, range and subquery
@@ -156,7 +175,7 @@ test("every Prometheus query parses (promtool)", { skip: !process.env.PROMTOOL &
   const groups = new Map();
   for (const { panel, target } of promTargets) {
     const expr = fill(target.expr);
-    assert.ok(!expr.includes("$"), `${label(panel)} ${target.refId}: unknown variable in ${expr}`);
+    assert.deepEqual(unknownVariables(target.expr), [], `${label(panel)} ${target.refId}: unknown variable in ${target.expr}`);
     const name = `${label(panel)}`;
     if (!groups.has(name)) groups.set(name, { name, rules: [] });
     groups.get(name).rules.push({ record: `panel_${panel.id}_${target.refId}`, expr });
