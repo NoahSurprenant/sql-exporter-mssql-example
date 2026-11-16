@@ -28,7 +28,8 @@ const panels = committed.panels.flatMap((p) => [p, ...(p.panels ?? [])]);
 const queried = panels.filter((p) => p.targets?.length);
 const label = (panel) => `panel ${panel.id} "${panel.title}"`;
 
-// The data sources stack/grafana/provisioning sets up: {uid: type}. The dashboard has no data source
+// The data sources stack/grafana/provisioning sets up, each as its scalar keys ({name, uid, type,
+// isDefault, ...}, all strings). The dashboard has no data source
 // variables, so a fixed uid is right as long as provisioning gives every Grafana that uid.
 //
 // Node has no YAML parser and the tests take no packages, so this reads the one shape a Grafana
@@ -69,10 +70,6 @@ function parseDatasources(text) {
     }
   }
   return entries.filter((e) => e.uid);
-}
-function provisionedDatasources() {
-  return Object.fromEntries(parseDatasources(read("stack/grafana/provisioning/datasources/datasources.yaml"))
-    .map((d) => [d.uid, d.type]));
 }
 
 test("the provisioning parser reads quoted values, comments and nested lists", () => {
@@ -164,8 +161,32 @@ function metricNames(expr) {
   return names;
 }
 
-const promTargets = queried.flatMap((panel) =>
-  panel.targets.filter((t) => (t.datasource ?? panel.datasource)?.type === "prometheus").map((t) => ({ panel, target: t })));
+// The data source a target queries, as Grafana picks it: the target's, else the panel's, else the
+// one provisioning marks isDefault. A reference may give only the uid; its type is then the
+// provisioned one. Undefined when there is none of the three.
+function datasourceOf(panel, target, sources) {
+  const ref = target.datasource ?? panel.datasource ?? sources.find((s) => s.isDefault === "true");
+  return ref && { uid: ref.uid, type: ref.type ?? sources.find((s) => s.uid === ref.uid)?.type };
+}
+function targetsOn(type, panels, sources) {
+  return panels.flatMap((panel) => (panel.targets ?? [])
+    .filter((t) => datasourceOf(panel, t, sources)?.type === type).map((target) => ({ panel, target })));
+}
+
+test("a query without a data source goes to the provisioned default", () => {
+  const sources = [{ uid: "prom", type: "prometheus", isDefault: "true" }, { uid: "logs", type: "loki" }];
+  const panels = [
+    { id: 1, targets: [{ refId: "A", expr: "up" }] },
+    { id: 2, datasource: { type: "loki", uid: "logs" }, targets: [{ refId: "A", expr: '{a="b"}' }] },
+    { id: 3, targets: [{ refId: "A", datasource: { uid: "prom" }, expr: "x" }] },
+  ];
+  const ids = (type) => targetsOn(type, panels, sources).map(({ panel }) => panel.id);
+  assert.deepEqual(ids("prometheus"), [1, 3]);
+  assert.deepEqual(ids("loki"), [2]);
+});
+
+const datasources = parseDatasources(read("stack/grafana/provisioning/datasources/datasources.yaml"));
+const promTargets = targetsOn("prometheus", queried, datasources);
 
 test("the committed dashboard is what stack/grafana/dashboard.mjs generates", () => {
   assert.deepEqual(committed, JSON.parse(JSON.stringify(generated)),
@@ -187,7 +208,7 @@ test("structure: a uid, unique panel ids, every panel on the 24-column grid", ()
 });
 
 test("data sources: only the uids stack/grafana/provisioning sets up", () => {
-  const sources = provisionedDatasources();
+  const sources = Object.fromEntries(datasources.map((d) => [d.uid, d.type]));
   assert.ok(Object.keys(sources).length, "no data sources found in datasources.yaml");
   assert.ok(!committed.templating?.list?.length, "the dashboard has variables now: check data source variables here too");
   for (const panel of panels) {
@@ -195,6 +216,10 @@ test("data sources: only the uids stack/grafana/provisioning sets up", () => {
       if (!ds) continue;
       assert.ok(Object.hasOwn(sources, ds.uid), `${label(panel)} ${where}: data source uid "${ds.uid}" is not provisioned (${Object.keys(sources).join(", ")})`);
       assert.equal(ds.type, sources[ds.uid], `${label(panel)} ${where}: data source "${ds.uid}" is a ${sources[ds.uid]}, not ${ds.type}`);
+    }
+    for (const target of panel.targets ?? []) {
+      assert.ok(datasourceOf(panel, target, datasources)?.type,
+        `${label(panel)} target ${target.refId}: no data source, and none is provisioned as the default`);
     }
   }
 });
@@ -226,10 +251,8 @@ test("the metric name check skips variables, comments and upper-case grouping li
 });
 
 test("Loki queries are not empty", () => {
-  for (const panel of queried) {
-    for (const target of panel.targets.filter((t) => (t.datasource ?? panel.datasource)?.type === "loki")) {
-      assert.ok(target.expr?.trim(), `${label(panel)} ${target.refId}: empty Loki query`);
-    }
+  for (const { panel, target } of targetsOn("loki", queried, datasources)) {
+    assert.ok(target.expr?.trim(), `${label(panel)} ${target.refId}: empty Loki query`);
   }
 });
 
