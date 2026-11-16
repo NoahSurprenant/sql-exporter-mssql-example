@@ -226,6 +226,44 @@ test("structure: a uid, unique panel ids, every panel on the 24-column grid", ()
       `${label(panel)} has no whole gridPos: ${JSON.stringify(panel.gridPos)}`);
     assert.ok(x + w <= 24, `${label(panel)} runs past column 24: x ${x} + w ${w}`);
   }
+  assert.deepEqual(overlaps(committed.panels), [], "panels overlap on the grid");
+});
+
+// Pairs of panels whose rectangles intersect, as Grafana lays them out. The top level holds the
+// panels and the row headers (a row is always a full-width line of height 1). An expanded row's
+// panels are top-level panels after it, which is how dashboard.mjs places them (its rows are
+// never collapsed). A collapsed row keeps its panels in row.panels in their own coordinates: on
+// expanding, Grafana moves them all by the same amount so the first sits right under the row and
+// pushes what follows down, so they are only checked against one another.
+const rect = (p) => (p.type === "row" ? { x: 0, y: p.gridPos.y, w: 24, h: 1 } : p.gridPos);
+const intersect = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+function overlaps(top) {
+  const found = [];
+  const check = (list, where) => list.forEach((a, i) => list.slice(i + 1).forEach((b) => {
+    if (intersect(rect(a), rect(b))) found.push(`${label(a)} and ${label(b)}${where}`);
+  }));
+  check(top, "");
+  for (const row of top.filter((p) => p.type === "row" && p.collapsed)) check(row.panels ?? [], ` (in collapsed ${label(row)})`);
+  return found;
+}
+
+test("the grid check finds overlapping panels, row headers included", () => {
+  const at = (id, x, y, w, h, extra = {}) => ({ id, title: `p${id}`, gridPos: { x, y, w, h }, ...extra });
+  const row = (id, y, extra = {}) => at(id, 0, y, 24, 1, { type: "row", collapsed: false, panels: [], ...extra });
+  // Side by side, then a row, then a panel under it: no overlap.
+  assert.deepEqual(overlaps([at(1, 0, 0, 12, 8), at(2, 12, 0, 12, 8), row(3, 8), at(4, 0, 9, 24, 4)]), []);
+  // The same place twice; one overlapping a corner.
+  assert.deepEqual(overlaps([at(1, 0, 0, 12, 8), at(2, 0, 0, 12, 8)]), ['panel 1 "p1" and panel 2 "p2"']);
+  assert.deepEqual(overlaps([at(1, 0, 0, 12, 8), at(2, 11, 7, 6, 4)]), ['panel 1 "p1" and panel 2 "p2"']);
+  // A row header placed over a panel.
+  assert.deepEqual(overlaps([at(1, 0, 0, 12, 8), row(2, 4)]), ['panel 1 "p1" and panel 2 "p2"']);
+  // A collapsed row's panels keep their own coordinates (Grafana moves them under the row when it
+  // is expanded), so they don't clash with the panels after the row...
+  const collapsed = row(2, 8, { collapsed: true, panels: [at(3, 0, 20, 12, 8), at(4, 12, 20, 12, 8)] });
+  assert.deepEqual(overlaps([at(1, 0, 0, 24, 8), collapsed, row(5, 9), at(6, 0, 10, 24, 8)]), []);
+  // ...but they must not overlap one another.
+  const clash = row(2, 8, { collapsed: true, panels: [at(3, 0, 20, 12, 8), at(4, 6, 24, 12, 8)] });
+  assert.deepEqual(overlaps([clash]), ['panel 3 "p3" and panel 4 "p4" (in collapsed panel 2 "p2")']);
 });
 
 test("data sources: only the uids stack/grafana/provisioning sets up", () => {
