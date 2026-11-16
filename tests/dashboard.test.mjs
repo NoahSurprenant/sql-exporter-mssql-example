@@ -61,17 +61,19 @@ function fill(expr) {
   return expr.replace(/\$\{(\w+)\}|\$(\w+)/g, (all, braced, plain) => VARIABLES[braced ?? plain] ?? all);
 }
 
-// The metric names a PromQL expression selects. Strings, label matchers, range and subquery
-// brackets and grouping label lists are removed first; what is left that looks like a name and
-// isn't a function call, keyword or number is a metric.
+// The metric names a PromQL expression selects. Strings and # comments (in one pass, so a quote in
+// a comment or a # in a string is no problem), Grafana variables, label matchers, range and subquery
+// brackets and grouping label lists (PromQL keywords are case-insensitive) are removed first; what
+// is left that looks like a name and isn't a function call, keyword or number is a metric.
 const KEYWORDS = new Set(["and", "or", "unless", "by", "without", "on", "ignoring", "group_left", "group_right",
   "bool", "offset", "atan2", "inf", "nan", "start", "end"]);
 function metricNames(expr) {
   const bare = expr
-    .replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`[^`]*`/g, '""')
+    .replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`[^`]*`|#.*/g, (m) => (m[0] === "#" ? " " : '""'))
+    .replace(/\$\{[^}]*\}|\$\w+|\[\[[^\]]*\]\]/g, " ")
     .replace(/\{[^}]*\}/g, " ")
     .replace(/\[[^\]]*\]/g, " ")
-    .replace(/\b(by|without|on|ignoring|group_left|group_right)\s*\([^)]*\)/g, " ");
+    .replace(/\b(by|without|on|ignoring|group_left|group_right)\s*\([^)]*\)/gi, " ");
   const names = new Set();
   for (const m of bare.matchAll(/(?<![\w.:])([a-zA-Z_:][\w:]*)(\s*\()?/g)) {
     if (!m[2] && !KEYWORDS.has(m[1].toLowerCase())) names.add(m[1]);
@@ -130,6 +132,14 @@ test("the metric name check finds the metrics in a query", () => {
   assert.deepEqual([...metricNames(
     'sum by (db) (rate(a_total{x="b c", y=~"d|e"}[5m])) / on(db) group_left(z) b and c offset 1m or vector(0)',
   )].sort(), ["a_total", "b", "c"]);
+});
+
+test("the metric name check skips variables, comments and upper-case grouping lists", () => {
+  const names = (expr) => [...metricNames(expr)].sort();
+  assert.deepEqual(names("sum(increase(a[$__range])) / $__range_s"), ["a"]);
+  assert.deepEqual(names("a * ${__interval_ms} / [[__interval_ms]]"), ["a"]);
+  assert.deepEqual(names("a # rate of b, isn't it\n+ c"), ["a", "c"]);
+  assert.deepEqual(names('sum BY (db) (x) / ON (db) GROUP_LEFT (z) y{l="#"}'), ["x", "y"]);
 });
 
 test("Loki queries are not empty", () => {
