@@ -116,7 +116,11 @@ panels: a 20-second blocking chain, a deadlock and a failed login
 | Error log | Failed logins; SQL Server's error log (Linux compose stack) |
 
 The dashboard JSON is generated: change [`stack/grafana/dashboard.mjs`](stack/grafana/dashboard.mjs)
-and run `node stack/grafana/dashboard.mjs`.
+and run `node stack/grafana/dashboard.mjs`. `node --test tests/dashboard.test.mjs` checks it without
+the stack, in seconds (Node 24.2 or later, no packages): the committed file is exactly what the
+generator writes, every panel is on the grid with its own id, overlaps no other and has a
+provisioned data source, every metric a query uses is a `metric_name` in the collectors, and, with
+`PROMTOOL=/path/to/promtool`, every query parses as PromQL.
 
 ```sh
 docker compose up -d                        # SQL Server 2022; MSSQL_VERSION=2017, 2019 or 2025 for others
@@ -179,7 +183,9 @@ Collector beside it (the container on Linux and in WSL 2, the Windows build nati
 an ExampleShop top query, its plan, `dbo.OrdersAtTotal` in the top procedures, and its definition.
 The Linux jobs also run [`tests/check_grafana.py`](tests/check_grafana.py), which queries every
 dashboard panel through Grafana, and upload a screenshot of the dashboard as an artifact. Each
-job's summary has a table of every metric and every event type.
+job's summary has a table of every metric and every event type. A separate fast job runs
+[`tests/dashboard.test.mjs`](tests/dashboard.test.mjs), the dashboard checks above that need no
+server, with a checksum-verified promtool.
 
 ## Adding a query
 

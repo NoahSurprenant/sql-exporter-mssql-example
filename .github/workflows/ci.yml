@@ -39,7 +39,37 @@ jobs:
           curl -fsSL "https://raw.githubusercontent.com/burningalchemist/sql_exporter/$SQL_EXPORTER_VERSION/examples/mssql/mssql_standard.collector.yml" \
             | diff -u - collectors/mssql_standard.collector.yml
 
+  # The dashboard without a server (tests/dashboard.test.mjs): generated file up to date, grid,
+  # data sources, every metric defined by a collector, PromQL parsed by promtool. Seconds, where the
+  # Linux jobs below take minutes to find the same mistakes as an empty panel.
+  dashboard:
+    name: Dashboard static checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      PROMETHEUS_VERSION: 3.15.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Download promtool
+        run: |
+          f=prometheus-$PROMETHEUS_VERSION.linux-amd64.tar.gz
+          base=https://github.com/prometheus/prometheus/releases/download/v$PROMETHEUS_VERSION
+          cd "$RUNNER_TEMP"
+          curl --proto '=https' -fsSLO "$base/$f"
+          curl --proto '=https' -fsSLO "$base/sha256sums.txt"
+          grep " $f\$" sha256sums.txt | sha256sum -c -
+          tar -xzf "$f" --strip-components=1 "prometheus-$PROMETHEUS_VERSION.linux-amd64/promtool"
+          echo "PROMTOOL=$RUNNER_TEMP/promtool" >> "$GITHUB_ENV"
+      - name: Check the dashboard
+        run: node --test tests/dashboard.test.mjs
+
   linux:
+    # The fast dashboard checks first: a stale dashboard or a renamed metric fails in seconds there,
+    # before these and the Windows jobs spend minutes finding it as an empty panel.
+    needs: dashboard
     name: Linux container, SQL Server ${{ matrix.version }}
     runs-on: ubuntu-24.04
     # The 2022 job on main also collects for 15 minutes for the Pages site.
@@ -161,6 +191,7 @@ jobs:
         run: docker compose logs
 
   windows:
+    needs: dashboard
     name: Windows, SQL Server ${{ matrix.version }}, exporter on ${{ matrix.exporter == 'wsl2' && 'Docker on Linux (WSL 2)' || 'Windows' }}
     runs-on: windows-2022
     timeout-minutes: 45

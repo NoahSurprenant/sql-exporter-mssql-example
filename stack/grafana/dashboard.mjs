@@ -1,6 +1,8 @@
 // Generates dashboards/sql-server.json: node stack/grafana/dashboard.mjs
 // The dashboard is built here rather than hand-edited JSON, so its panels share one shape. After a
 // change in Grafana's editor, port it back here (or export the JSON and drop this script).
+// Importing it only builds the dashboard; the file is written when it is run (tests/dashboard.test.mjs
+// compares the two).
 import { writeFileSync } from "node:fs";
 
 const P = { type: "prometheus", uid: "prometheus" };
@@ -307,9 +309,14 @@ stat("Failed logins", "\"Login failed\" entries in the error log in the time ran
 logs("Error log", "SQL Server's own error log (event db.server.errorlog), read from the container's log directory: startup, recovery, failed logins, I/O and memory errors. Not collected from the Windows runs.",
   event("db.server.errorlog"), 20, 8, 500);
 
-const dashboard = {
+export const dashboard = {
   uid: "sql-server-example", title: "SQL Server example", tags: ["sql-server"], timezone: "browser",
   schemaVersion: 41, version: 1, refresh: "30s", time: { from: "now-30m", to: "now" }, panels,
 };
-writeFileSync(new URL("./dashboards/sql-server.json", import.meta.url), JSON.stringify(dashboard, null, 2) + "\n");
-console.log(`${panels.length} panels`);
+// The file's exact text, as written below; tests/dashboard.test.mjs compares the committed file with it.
+export const text = JSON.stringify(dashboard, null, 2) + "\n";
+// import.meta.main (Node 24.2 and later): true only when this file is the one node was started with.
+if (import.meta.main) {
+  writeFileSync(new URL("./dashboards/sql-server.json", import.meta.url), text);
+  console.log(`${panels.length} panels`);
+}
